@@ -1,40 +1,35 @@
 # FilingDesk
 
-Personal research desk for **US and India** markets, starting with a **global open-market insider feed**.
+Personal research desk for **US and India** markets.
 
-Phase 1 (this repo): **US Form 4 buys & sells** from free SEC EDGAR data, with rich filters.  
-Phase 2: **India** insider activity (NSE + BSE / SEBI-SAST), then financials, then sector browse.
+## What's live
+
+| Area | US | India |
+|---|---|---|
+| Insider open-market buy/sell feed | SEC Form 4 (P/S) | NSE PIT Market Purchase / Sale (NSE+BSE reported) |
+| Company research | SEC XBRL multi-year statements | Yahoo Finance annual statements (.NS / .BO) |
+| Sector explore | SIC-based sectors from SEC submissions | Yahoo sector/industry metadata |
 
 Legacy notes from earlier experiments live in `docs/legacy/`.
 
 ---
 
-## Features (Phase 1)
-
-- **US | India** market switch in the UI (India is a planned stub)
-- **Global insider feed** of open-market **buys (P)** and **sells (S)** only
-- Filters: side, role, ticker, insider, relationship, officer title, ownership form, tx/filing dates, shares, price, value, free-text search, sort
-- Local SQLite cache + on-demand SEC sync
-- Free data only (no paid SEC APIs)
-
----
-
 ## Quick start (local)
 
-### 1. Backend
+### Backend
 
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # already includes a SEC User-Agent placeholder
+cp .env.example .env
 python run.py          # http://127.0.0.1:5000
 ```
 
-`SEC_USER_AGENT` is required by SEC fair-access rules (name/app + email).
+`SEC_USER_AGENT` is required by SEC fair-access rules.
 
-### 2. Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -42,30 +37,28 @@ npm install
 npm run dev            # http://127.0.0.1:5173
 ```
 
-Open the app, click **Sync recent Form 4s**, then filter the feed.
+Suggested first-run flow:
+1. **US → Insider feed → Sync recent Form 4s**
+2. **India → Insider feed → Sync NSE/BSE open-market PIT**
+3. **Research** a ticker (e.g. `AAPL` / `RELIANCE`)
+4. **Explore → Enrich sector metadata**
 
 ---
 
-## API (US)
+## API map
 
 | Method | Path | Purpose |
 |---|---|---|
-| `GET` | `/api/health` | Health check |
-| `GET` | `/api/v1/markets` | US + India market metadata |
-| `GET` | `/api/v1/insider/transactions` | Filtered insider feed |
+| `GET` | `/api/health` | Health |
+| `GET` | `/api/v1/markets` | Market status |
+| `GET` | `/api/v1/insider/transactions` | Filtered insider feed (`market=US\|IN`) |
 | `GET` | `/api/v1/insider/meta` | Filter options + stats |
-| `POST` | `/api/v1/insider/sync?market=US` | Pull recent Form 4s into SQLite |
-
-Useful query params on `/insider/transactions`: `side`, `role`, `ticker`, `q`, `min_price`, `max_price`, `min_value`, `max_value`, `min_shares`, `max_shares`, `transaction_date_from`, `transaction_date_to`, `filing_date_from`, `filing_date_to`, `ownership_form`, `sort`, `page`, `page_size`.
-
----
-
-## Data sources
-
-| Market | Phase | Source |
-|---|---|---|
-| US | 1 | SEC EDGAR current Form 4 feed + ownership XML (free) |
-| India | 2 | NSE + BSE public disclosures / SEBI-SAST (planned) |
+| `POST` | `/api/v1/insider/sync` | Pull recent insider filings |
+| `GET` | `/api/v1/financials/<ticker>` | Financials / summary |
+| `GET` | `/api/v1/explore/sectors` | Sector list |
+| `GET` | `/api/v1/explore/industries` | Industry list |
+| `GET` | `/api/v1/explore/companies` | Company browse |
+| `POST` | `/api/v1/explore/sync` | Enrich sector metadata |
 
 ---
 
@@ -79,9 +72,17 @@ pytest -q
 
 ---
 
-## Roadmap
+## Data sources
 
-1. **US insider desk** (done in Phase 1)
-2. **US company financials** (SEC XBRL)
-3. **India insider feed** (NSE + BSE)
-4. **India financials**, then **sector explore** for both markets
+| Market | Insider | Financials / explore |
+|---|---|---|
+| US | SEC Form 4 atom + ownership XML (free) | SEC XBRL companyfacts + submissions SIC |
+| India | NSE corporates-pit Market Purchase/Sale (free; includes BSE-reported rows) | Yahoo Finance annual statements + sector/industry (free) |
+
+---
+
+## Roadmap remaining
+
+- Watchlists / saved screens
+- Deeper India PIT coverage windows / scheduled sync
+- Optional Postgres for longer-term local use

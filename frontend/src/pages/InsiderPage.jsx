@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchInsiderMeta, fetchInsiderTransactions, syncInsider } from '../services/api'
-import { formatDate, formatMoney, formatNumber } from '../utils/format'
+import { currencyForMarket, formatDate, formatMoney, formatNumber } from '../utils/format'
 
 const EMPTY_FILTERS = {
   q: '',
@@ -11,6 +11,7 @@ const EMPTY_FILTERS = {
   relationship: '',
   officer_title: '',
   ownership_form: '',
+  exchange: '',
   transaction_date_from: '',
   transaction_date_to: '',
   filing_date_from: '',
@@ -25,6 +26,7 @@ const EMPTY_FILTERS = {
 }
 
 export default function InsiderPage({ market }) {
+  const currency = currencyForMarket(market)
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [applied, setApplied] = useState(EMPTY_FILTERS)
   const [page, setPage] = useState(1)
@@ -52,7 +54,7 @@ export default function InsiderPage({ market }) {
       try {
         const next = await fetchInsiderMeta(market)
         if (!cancelled) setMeta(next)
-      } catch (err) {
+      } catch {
         if (!cancelled) setMeta(null)
       }
     }
@@ -110,7 +112,8 @@ export default function InsiderPage({ market }) {
     setSyncing(true)
     setError('')
     try {
-      await syncInsider(market, { days: 7, max_filings: 25 })
+      const payload = market === 'US' ? { days: 7, max_filings: 25 } : { days: 90 }
+      await syncInsider(market, payload)
       setPage(1)
       setApplied((prev) => ({ ...prev }))
     } catch (err) {
@@ -120,43 +123,32 @@ export default function InsiderPage({ market }) {
     }
   }
 
-  if (market === 'IN') {
-    return (
-      <section className="panel planned">
-        <h2>India insider feed — Phase 2</h2>
-        <p className="muted">
-          US is live first. India will use free NSE + BSE disclosures and SEBI/SAST filings,
-          starting with open-market style insider buy/sell activity.
-        </p>
-        <ul>
-          <li>1. Insider activity</li>
-          <li>2. Financial statements</li>
-          <li>3. Sector browse</li>
-        </ul>
-      </section>
-    )
-  }
-
   const stats = meta?.stats
+  const syncLabel =
+    market === 'US' ? 'Sync recent Form 4s' : 'Sync NSE/BSE open-market PIT'
 
   return (
     <div>
       <div className="hero-strip">
-        <h1>Global open-market insider feed</h1>
+        <h1>
+          {market === 'US' ? 'US open-market insider feed' : 'India open-market insider feed'}
+        </h1>
         <p>
-          Track Form 4 open-market buys (P) and sells (S) across US filers. Filter by role,
-          ticker, dates, price, size, and more — then sync fresh filings from SEC EDGAR.
+          {market === 'US'
+            ? 'Track Form 4 open-market buys (P) and sells (S) across US filers.'
+            : 'Track NSE PIT Market Purchase / Market Sale disclosures (includes BSE-reported rows).'}{' '}
+          Filter by role, ticker, dates, price, size, and more.
         </p>
       </div>
 
       <section className="panel">
         <div className="panel-header">
           <div>
-            <h2>US insider transactions</h2>
+            <h2>{market === 'US' ? 'US' : 'India'} insider transactions</h2>
             <p>
               {meta?.latest_sync
                 ? `Last sync: ${meta.latest_sync.status} · ${meta.latest_sync.transactions_upserted || 0} rows upserted`
-                : 'No sync yet — pull recent Form 4 filings to populate the feed.'}
+                : 'No sync yet — pull recent filings to populate the feed.'}
             </p>
           </div>
           <div className="stats">
@@ -174,7 +166,7 @@ export default function InsiderPage({ market }) {
             </div>
             <div className="actions">
               <button className="btn btn-primary" type="button" onClick={handleSync} disabled={syncing}>
-                {syncing ? 'Syncing from SEC…' : 'Sync recent Form 4s'}
+                {syncing ? 'Syncing…' : syncLabel}
               </button>
             </div>
           </div>
@@ -194,8 +186,8 @@ export default function InsiderPage({ market }) {
             <label htmlFor="side">Side</label>
             <select id="side" value={filters.side} onChange={(e) => updateFilter('side', e.target.value)}>
               <option value="">All</option>
-              <option value="buy">Buy (P)</option>
-              <option value="sell">Sell (S)</option>
+              <option value="buy">Buy</option>
+              <option value="sell">Sell</option>
             </select>
           </div>
           <div className="field">
@@ -203,8 +195,8 @@ export default function InsiderPage({ market }) {
             <select id="role" value={filters.role} onChange={(e) => updateFilter('role', e.target.value)}>
               <option value="">All</option>
               <option value="director">Director</option>
-              <option value="officer">Officer</option>
-              <option value="ten_percent">10% owner</option>
+              <option value="officer">Officer / KMP</option>
+              <option value="ten_percent">{market === 'IN' ? 'Promoter' : '10% owner'}</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -215,7 +207,7 @@ export default function InsiderPage({ market }) {
               list="ticker-options"
               value={filters.ticker}
               onChange={(e) => updateFilter('ticker', e.target.value.toUpperCase())}
-              placeholder="AAPL"
+              placeholder={market === 'US' ? 'AAPL' : 'RELIANCE'}
             />
             <datalist id="ticker-options">
               {(meta?.tickers || []).map((ticker) => (
@@ -223,6 +215,23 @@ export default function InsiderPage({ market }) {
               ))}
             </datalist>
           </div>
+          {market === 'IN' ? (
+            <div className="field">
+              <label htmlFor="exchange">Exchange</label>
+              <input
+                id="exchange"
+                list="exchange-options"
+                value={filters.exchange}
+                onChange={(e) => updateFilter('exchange', e.target.value.toUpperCase())}
+                placeholder="NSE / BSE"
+              />
+              <datalist id="exchange-options">
+                {(meta?.exchanges || []).map((item) => (
+                  <option key={item} value={item} />
+                ))}
+              </datalist>
+            </div>
+          ) : null}
           <div className="field">
             <label htmlFor="insider_name">Insider</label>
             <input
@@ -246,32 +255,6 @@ export default function InsiderPage({ market }) {
             </datalist>
           </div>
           <div className="field">
-            <label htmlFor="officer_title">Officer title</label>
-            <input
-              id="officer_title"
-              list="title-options"
-              value={filters.officer_title}
-              onChange={(e) => updateFilter('officer_title', e.target.value)}
-            />
-            <datalist id="title-options">
-              {(meta?.officer_titles || []).map((item) => (
-                <option key={item} value={item} />
-              ))}
-            </datalist>
-          </div>
-          <div className="field">
-            <label htmlFor="ownership_form">Ownership</label>
-            <select
-              id="ownership_form"
-              value={filters.ownership_form}
-              onChange={(e) => updateFilter('ownership_form', e.target.value)}
-            >
-              <option value="">All</option>
-              <option value="D">Direct (D)</option>
-              <option value="I">Indirect (I)</option>
-            </select>
-          </div>
-          <div className="field">
             <label htmlFor="transaction_date_from">Tx date from</label>
             <input
               id="transaction_date_from"
@@ -290,24 +273,6 @@ export default function InsiderPage({ market }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="filing_date_from">Filing from</label>
-            <input
-              id="filing_date_from"
-              type="date"
-              value={filters.filing_date_from}
-              onChange={(e) => updateFilter('filing_date_from', e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="filing_date_to">Filing to</label>
-            <input
-              id="filing_date_to"
-              type="date"
-              value={filters.filing_date_to}
-              onChange={(e) => updateFilter('filing_date_to', e.target.value)}
-            />
-          </div>
-          <div className="field">
             <label htmlFor="min_shares">Min shares</label>
             <input
               id="min_shares"
@@ -315,16 +280,6 @@ export default function InsiderPage({ market }) {
               min="0"
               value={filters.min_shares}
               onChange={(e) => updateFilter('min_shares', e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="max_shares">Max shares</label>
-            <input
-              id="max_shares"
-              type="number"
-              min="0"
-              value={filters.max_shares}
-              onChange={(e) => updateFilter('max_shares', e.target.value)}
             />
           </div>
           <div className="field">
@@ -339,18 +294,7 @@ export default function InsiderPage({ market }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="max_price">Max price</label>
-            <input
-              id="max_price"
-              type="number"
-              min="0"
-              step="0.01"
-              value={filters.max_price}
-              onChange={(e) => updateFilter('max_price', e.target.value)}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="min_value">Min value ($)</label>
+            <label htmlFor="min_value">Min value</label>
             <input
               id="min_value"
               type="number"
@@ -360,28 +304,13 @@ export default function InsiderPage({ market }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="max_value">Max value ($)</label>
-            <input
-              id="max_value"
-              type="number"
-              min="0"
-              value={filters.max_value}
-              onChange={(e) => updateFilter('max_value', e.target.value)}
-            />
-          </div>
-          <div className="field">
             <label htmlFor="sort">Sort</label>
             <select id="sort" value={filters.sort} onChange={(e) => updateFilter('sort', e.target.value)}>
               <option value="filing_date_desc">Filing date ↓</option>
-              <option value="filing_date_asc">Filing date ↑</option>
               <option value="transaction_date_desc">Tx date ↓</option>
-              <option value="transaction_date_asc">Tx date ↑</option>
               <option value="value_desc">Value ↓</option>
-              <option value="value_asc">Value ↑</option>
               <option value="shares_desc">Shares ↓</option>
-              <option value="shares_asc">Shares ↑</option>
               <option value="price_desc">Price ↓</option>
-              <option value="price_asc">Price ↑</option>
             </select>
           </div>
           <div className="actions">
@@ -408,22 +337,19 @@ export default function InsiderPage({ market }) {
                   <th>Company</th>
                   <th>Insider</th>
                   <th>Role</th>
+                  {market === 'IN' ? <th>Exch</th> : null}
                   <th>Tx date</th>
                   <th>Filing</th>
                   <th>Shares</th>
                   <th>Price</th>
                   <th>Value</th>
-                  <th>Owned after</th>
-                  <th>Form</th>
                 </tr>
               </thead>
               <tbody>
                 {data.items.map((row) => (
                   <tr key={row.id}>
                     <td>
-                      <span className={`side-pill ${row.transaction_side}`}>
-                        {row.transaction_side}
-                      </span>
+                      <span className={`side-pill ${row.transaction_side}`}>{row.transaction_side}</span>
                     </td>
                     <td className="mono">{row.ticker || '—'}</td>
                     <td>{row.company_name || '—'}</td>
@@ -437,21 +363,19 @@ export default function InsiderPage({ market }) {
                       )}
                     </td>
                     <td>{row.relationship || '—'}</td>
+                    {market === 'IN' ? <td className="mono">{row.exchange || '—'}</td> : null}
                     <td className="mono">{formatDate(row.transaction_date)}</td>
                     <td className="mono">{formatDate(row.filing_date)}</td>
                     <td className="mono">{formatNumber(row.shares, 2)}</td>
-                    <td className="mono">{formatMoney(row.price_per_share)}</td>
-                    <td className="mono">{formatMoney(row.total_value)}</td>
-                    <td className="mono">{formatNumber(row.shares_owned_after, 2)}</td>
-                    <td className="mono">{row.ownership_form || '—'}</td>
+                    <td className="mono">{formatMoney(row.price_per_share, currency)}</td>
+                    <td className="mono">{formatMoney(row.total_value, currency)}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           ) : (
             <div className="empty muted">
-              No transactions yet. Click <strong>Sync recent Form 4s</strong> to pull open-market
-              buys and sells from SEC EDGAR.
+              No transactions yet. Click <strong>{syncLabel}</strong> to load open-market buys and sells.
             </div>
           )}
         </div>

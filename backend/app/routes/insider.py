@@ -1,8 +1,7 @@
-"""Insider activity API routes."""
+"""Insider activity API routes (US Form 4 + India NSE PIT)."""
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 
 from flask import Blueprint, current_app, jsonify, request
@@ -10,7 +9,7 @@ from sqlalchemy import func, or_
 
 from app.extensions import db
 from app.models import InsiderTransaction, SyncRun
-from app.services.india_provider import list_india_insider_transactions
+from app.services.india_provider import sync_india_insider_feed
 from app.services.sec_form4 import sync_us_insider_feed
 from app.utils.helpers import parse_date
 
@@ -39,15 +38,20 @@ def _as_int(value: Optional[str], default: int) -> int:
         return default
 
 
+def _market_or_400() -> tuple[str | None, tuple | None]:
+    market = (request.args.get("market") or "US").upper()
+    if market not in {"US", "IN"}:
+        return None, (jsonify({"error": f"Unsupported market: {market}"}), 400)
+    return market, None
+
+
 @insider_bp.get("/insider/transactions")
 def list_insider_transactions():
-    market = (request.args.get("market") or "US").upper()
-    if market == "IN":
-        return jsonify(list_india_insider_transactions(**request.args.to_dict()))
-    if market != "US":
-        return jsonify({"error": f"Unsupported market: {market}"}), 400
+    market, err = _market_or_400()
+    if err:
+        return err
 
-    query = InsiderTransaction.query.filter_by(market="US")
+    query = InsiderTransaction.query.filter_by(market=market)
 
     side = (request.args.get("side") or "").strip().lower()
     if side in {"buy", "sell"}:
@@ -89,7 +93,6 @@ def list_insider_transactions():
     if is_ten is not None:
         query = query.filter(InsiderTransaction.is_ten_percent_owner.is_(is_ten))
 
-    # Convenience role filter: director | officer | ten_percent | other
     role = (request.args.get("role") or "").strip().lower()
     if role == "director":
         query = query.filter(InsiderTransaction.is_director.is_(True))
@@ -107,6 +110,10 @@ def list_insider_transactions():
     ownership_form = (request.args.get("ownership_form") or "").strip().upper()
     if ownership_form in {"D", "I"}:
         query = query.filter(InsiderTransaction.ownership_form == ownership_form)
+
+    exchange = (request.args.get("exchange") or "").strip().upper()
+    if exchange:
+        query = query.filter(InsiderTransaction.exchange.ilike(f"%{exchange}%"))
 
     tx_from = parse_date(request.args.get("transaction_date_from"))
     if tx_from:
@@ -168,7 +175,10 @@ def list_insider_transactions():
         "price_desc": InsiderTransaction.price_per_share.desc(),
         "price_asc": InsiderTransaction.price_per_share.asc(),
     }
-    query = query.order_by(sort_map.get(sort, InsiderTransaction.filing_date.desc()), InsiderTransaction.id.desc())
+    query = query.order_by(
+        sort_map.get(sort, InsiderTransaction.filing_date.desc()),
+        InsiderTransaction.id.desc(),
+    )
 
     page = max(_as_int(request.args.get("page"), 1), 1)
     page_size = min(max(_as_int(request.args.get("page_size"), 50), 1), 200)
@@ -177,34 +187,28 @@ def list_insider_transactions():
 
     return jsonify(
         {
-            "market": "US",
+            "market": market,
             "total": total,
             "page": page,
             "page_size": page_size,
             "sort": sort,
             "items": [item.to_dict() for item in items],
-            "filters_applied": {k: v for k, v in request.args.items() if k not in {"page", "page_size"}},
+            "filters_applied": {
+                k: v for k, v in request.args.items() if k not in {"page", "page_size"}
+            },
         }
     )
 
 
 @insider_bp.get("/insider/meta")
 def insider_meta():
-    market = (request.args.get("market") or "US").upper()
-    if market == "IN":
-        return jsonify(
-            {
-                "market": "IN",
-                "status": "planned",
-                "sides": ["buy", "sell"],
-                "roles": ["director", "officer", "ten_percent", "other"],
-                "message": "India filters will mirror US once Phase 2 data is live.",
-            }
-        )
+    market, err = _market_or_400()
+    if err:
+        return err
 
     tickers = (
         db.session.query(InsiderTransaction.ticker)
-        .filter(InsiderTransaction.market == "US", InsiderTransaction.ticker.isnot(None))
+        .filter(InsiderTransaction.market == market, InsiderTransaction.ticker.isnot(None))
         .distinct()
         .order_by(InsiderTransaction.ticker.asc())
         .limit(500)
@@ -212,7 +216,7 @@ def insider_meta():
     )
     relationships = (
         db.session.query(InsiderTransaction.relationship)
-        .filter(InsiderTransaction.market == "US", InsiderTransaction.relationship.isnot(None))
+        .filter(InsiderTransaction.market == market, InsiderTransaction.relationship.isnot(None))
         .distinct()
         .order_by(InsiderTransaction.relationship.asc())
         .limit(200)
@@ -220,34 +224,49 @@ def insider_meta():
     )
     titles = (
         db.session.query(InsiderTransaction.officer_title)
-        .filter(InsiderTransaction.market == "US", InsiderTransaction.officer_title.isnot(None))
+        .filter(InsiderTransaction.market == market, InsiderTransaction.officer_title.isnot(None))
         .distinct()
         .order_by(InsiderTransaction.officer_title.asc())
         .limit(200)
         .all()
     )
+    exchanges = (
+        db.session.query(InsiderTransaction.exchange)
+        .filter(InsiderTransaction.market == market, InsiderTransaction.exchange.isnot(None))
+        .distinct()
+        .order_by(InsiderTransaction.exchange.asc())
+        .limit(50)
+        .all()
+    )
 
-    aggregates = db.session.query(
-        func.count(InsiderTransaction.id),
-        func.sum(InsiderTransaction.total_value),
-        func.min(InsiderTransaction.transaction_date),
-        func.max(InsiderTransaction.transaction_date),
-        func.min(InsiderTransaction.filing_date),
-        func.max(InsiderTransaction.filing_date),
-    ).filter(InsiderTransaction.market == "US").one()
+    aggregates = (
+        db.session.query(
+            func.count(InsiderTransaction.id),
+            func.sum(InsiderTransaction.total_value),
+            func.min(InsiderTransaction.transaction_date),
+            func.max(InsiderTransaction.transaction_date),
+            func.min(InsiderTransaction.filing_date),
+            func.max(InsiderTransaction.filing_date),
+        )
+        .filter(InsiderTransaction.market == market)
+        .one()
+    )
 
-    buy_count = InsiderTransaction.query.filter_by(market="US", transaction_side="buy").count()
-    sell_count = InsiderTransaction.query.filter_by(market="US", transaction_side="sell").count()
-    latest_sync = SyncRun.query.filter_by(market="US").order_by(SyncRun.started_at.desc()).first()
+    buy_count = InsiderTransaction.query.filter_by(market=market, transaction_side="buy").count()
+    sell_count = InsiderTransaction.query.filter_by(market=market, transaction_side="sell").count()
+    latest_sync = (
+        SyncRun.query.filter_by(market=market).order_by(SyncRun.started_at.desc()).first()
+    )
 
     return jsonify(
         {
-            "market": "US",
+            "market": market,
             "status": "active",
             "sides": ["buy", "sell"],
             "transaction_codes": ["P", "S"],
             "roles": ["director", "officer", "ten_percent", "other"],
-            "ownership_forms": ["D", "I"],
+            "ownership_forms": ["D", "I"] if market == "US" else [],
+            "exchanges": [row[0] for row in exchanges if row[0]],
             "sort_options": [
                 "filing_date_desc",
                 "filing_date_asc",
@@ -275,6 +294,7 @@ def insider_meta():
             },
             "latest_sync": latest_sync.to_dict() if latest_sync else None,
             "sync_max_filings_default": current_app.config["SYNC_MAX_FILINGS"],
+            "currency_hint": "USD" if market == "US" else "INR",
         }
     )
 
@@ -282,33 +302,39 @@ def insider_meta():
 @insider_bp.post("/insider/sync")
 def sync_insider():
     market = (request.args.get("market") or (request.json or {}).get("market") or "US").upper()
-    if market == "IN":
-        return jsonify(
-            {
-                "market": "IN",
-                "status": "planned",
-                "message": "India sync is not available yet (Phase 2).",
-            }
-        ), 501
-    if market != "US":
-        return jsonify({"error": f"Unsupported market: {market}"}), 400
-
     body = request.get_json(silent=True) or {}
-    days = _as_int(str(body.get("days", request.args.get("days", 7))), 7)
-    max_filings = _as_int(
-        str(body.get("max_filings", request.args.get("max_filings", current_app.config["SYNC_MAX_FILINGS"]))),
-        current_app.config["SYNC_MAX_FILINGS"],
-    )
-    days = max(1, min(days, 30))
-    max_filings = max(1, min(max_filings, 100))
 
-    result = sync_us_insider_feed(days=days, max_filings=max_filings)
-    return jsonify(result)
+    try:
+        if market == "US":
+            days = _as_int(str(body.get("days", request.args.get("days", 7))), 7)
+            max_filings = _as_int(
+                str(
+                    body.get(
+                        "max_filings",
+                        request.args.get("max_filings", current_app.config["SYNC_MAX_FILINGS"]),
+                    )
+                ),
+                current_app.config["SYNC_MAX_FILINGS"],
+            )
+            days = max(1, min(days, 30))
+            max_filings = max(1, min(max_filings, 100))
+            result = sync_us_insider_feed(days=days, max_filings=max_filings)
+            return jsonify(result)
+        if market == "IN":
+            days = _as_int(str(body.get("days", request.args.get("days", 90))), 90)
+            days = max(7, min(days, 180))
+            result = sync_india_insider_feed(days=days)
+            return jsonify(result)
+        return jsonify({"error": f"Unsupported market: {market}"}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 502
 
 
 @insider_bp.get("/insider/sync/latest")
 def latest_sync():
-    market = (request.args.get("market") or "US").upper()
+    market, err = _market_or_400()
+    if err:
+        return err
     run = SyncRun.query.filter_by(market=market).order_by(SyncRun.started_at.desc()).first()
     if not run:
         return jsonify({"market": market, "latest_sync": None})

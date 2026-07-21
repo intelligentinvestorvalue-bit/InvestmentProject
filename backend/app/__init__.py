@@ -37,10 +37,14 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     from app.routes.health import health_bp
     from app.routes.insider import insider_bp
     from app.routes.markets import markets_bp
+    from app.routes.financials import financials_bp
+    from app.routes.explore import explore_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(markets_bp, url_prefix="/api/v1")
     app.register_blueprint(insider_bp, url_prefix="/api/v1")
+    app.register_blueprint(financials_bp, url_prefix="/api/v1")
+    app.register_blueprint(explore_bp, url_prefix="/api/v1")
 
     with app.app_context():
         db.create_all()

@@ -20,11 +20,11 @@ def parse_date(value: Optional[str]) -> Optional[date]:
     return None
 
 
-def to_float(value: Optional[str]) -> Optional[float]:
+def to_float(value) -> Optional[float]:
     if value is None:
         return None
-    text = str(value).strip().replace(",", "")
-    if not text:
+    text = str(value).strip().replace(",", "").replace("Nil", "").replace("nil", "")
+    if not text or text == "-":
         return None
     try:
         return float(text)
