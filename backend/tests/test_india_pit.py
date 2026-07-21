@@ -1,6 +1,6 @@
-"""Unit tests for India PIT normalization (no network)."""
+"""Unit tests for India PIT role cleanup."""
 
-from app.services.india_provider import _normalize_pit_row
+from app.services.india_provider import _normalize_pit_row, _role_flags
 
 
 def test_normalize_keeps_only_open_market_modes():
@@ -35,3 +35,13 @@ def test_normalize_keeps_only_open_market_modes():
 
     off = _normalize_pit_row({"acqMode": "Off Market", "tdpTransactionType": "Buy", "symbol": "TCS"})
     assert off is None
+
+
+def test_role_flags_promoter_and_independent_director():
+    promoter = _role_flags("Promoter Group")
+    assert promoter["is_ten_percent_owner"] is True
+    assert promoter["relationship"] == "Promoter Group"
+
+    director = _role_flags("Independent Director")
+    assert director["is_director"] is True
+    assert director["relationship"] == "Independent Director"

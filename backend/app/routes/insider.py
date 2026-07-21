@@ -9,7 +9,7 @@ from sqlalchemy import func, or_
 
 from app.extensions import db
 from app.models import InsiderTransaction, SyncRun
-from app.services.india_provider import sync_india_insider_feed
+from app.services.india_provider import list_india_disclosures, sync_india_insider_feed
 from app.services.sec_form4 import sync_us_insider_feed
 from app.utils.helpers import parse_date
 
@@ -318,16 +318,35 @@ def sync_insider():
             )
             days = max(1, min(days, 30))
             max_filings = max(1, min(max_filings, 100))
-            result = sync_us_insider_feed(days=days, max_filings=max_filings)
+            result = sync_us_insider_feed(days=days, max_filings=max_filings, trigger="manual")
             return jsonify(result)
         if market == "IN":
-            days = _as_int(str(body.get("days", request.args.get("days", 90))), 90)
-            days = max(7, min(days, 180))
-            result = sync_india_insider_feed(days=days)
+            days = _as_int(str(body.get("days", request.args.get("days", current_app.config.get("IN_SYNC_DAYS", 120)))), 120)
+            days = max(30, min(days, 180))
+            include_extra = str(body.get("include_extra", "1")).lower() not in {"0", "false", "no"}
+            result = sync_india_insider_feed(days=days, trigger="manual", include_extra=include_extra)
             return jsonify(result)
         return jsonify({"error": f"Unsupported market: {market}"}), 400
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 502
+
+
+@insider_bp.get("/insider/disclosures")
+def india_disclosures():
+    market = (request.args.get("market") or "IN").upper()
+    if market != "IN":
+        return jsonify({"error": "Disclosures endpoint currently supports market=IN only"}), 400
+    kind = (request.args.get("kind") or "pledge").lower()
+    if kind not in {"pledge", "sast"}:
+        return jsonify({"error": "kind must be pledge or sast"}), 400
+    return jsonify(
+        list_india_disclosures(
+            kind=kind,
+            ticker=request.args.get("ticker"),
+            page=_as_int(request.args.get("page"), 1),
+            page_size=_as_int(request.args.get("page_size"), 50),
+        )
+    )
 
 
 @insider_bp.get("/insider/sync/latest")

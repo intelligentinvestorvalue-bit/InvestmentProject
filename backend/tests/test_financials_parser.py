@@ -36,6 +36,13 @@ def test_parse_financial_statements_prefers_annual_tags():
                         ]
                     }
                 },
+                "PaymentsToAcquirePropertyPlantAndEquipment": {
+                    "units": {
+                        "USD": [
+                            {"fy": 2024, "fp": "FY", "form": "10-K", "val": -8, "filed": "2025-01-01", "end": "2024-12-31"},
+                        ]
+                    }
+                },
             }
         }
     }
@@ -45,3 +52,4 @@ def test_parse_financial_statements_prefers_annual_tags():
     assert statements["income_statement"][0]["NetIncome"] == 20
     assert statements["balance_sheet"][0]["Assets"] == 500
     assert statements["cash_flow"][0]["OperatingCashFlow"] == 30
+    assert statements["cash_flow"][0]["FreeCashFlowProxy"] == 22.0

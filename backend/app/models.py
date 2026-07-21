@@ -179,6 +179,7 @@ class SyncRun(db.Model):
     filings_seen = db.Column(db.Integer, default=0)
     transactions_upserted = db.Column(db.Integer, default=0)
     error_message = db.Column(db.Text, nullable=True)
+    trigger = db.Column(db.String(32), nullable=True, default="manual")  # manual | scheduled
 
     def to_dict(self) -> dict:
         return {
@@ -190,4 +191,105 @@ class SyncRun(db.Model):
             "filings_seen": self.filings_seen,
             "transactions_upserted": self.transactions_upserted,
             "error_message": self.error_message,
+            "trigger": self.trigger,
         }
+
+
+class Watchlist(db.Model):
+    """Named saved screen / watchlist."""
+
+    __tablename__ = "watchlists"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    market = db.Column(db.String(8), nullable=False, default="US", index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+
+    items = db.relationship(
+        "WatchlistItem",
+        backref="watchlist",
+        cascade="all, delete-orphan",
+        order_by="WatchlistItem.ticker",
+    )
+
+    def to_dict(self, *, include_items: bool = True) -> dict:
+        payload = {
+            "id": self.id,
+            "name": self.name,
+            "market": self.market,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "item_count": len(self.items or []),
+        }
+        if include_items:
+            payload["items"] = [item.to_dict() for item in self.items]
+        return payload
+
+
+class WatchlistItem(db.Model):
+    __tablename__ = "watchlist_items"
+    __table_args__ = (
+        db.UniqueConstraint("watchlist_id", "ticker", name="uq_watchlist_ticker"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    watchlist_id = db.Column(db.Integer, db.ForeignKey("watchlists.id"), nullable=False, index=True)
+    ticker = db.Column(db.String(32), nullable=False, index=True)
+    company_name = db.Column(db.String(255), nullable=True)
+    notes = db.Column(db.String(512), nullable=True)
+    added_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "watchlist_id": self.watchlist_id,
+            "ticker": self.ticker,
+            "company_name": self.company_name,
+            "notes": self.notes,
+            "added_at": self.added_at.isoformat() if self.added_at else None,
+        }
+
+
+class IndiaDisclosure(db.Model):
+    """India pledge / SAST disclosures (separate from open-market PIT trades)."""
+
+    __tablename__ = "india_disclosures"
+    __table_args__ = (
+        db.UniqueConstraint("kind", "external_id", name="uq_india_disclosure"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(16), nullable=False, index=True)  # pledge | sast
+    external_id = db.Column(db.String(128), nullable=False)
+    ticker = db.Column(db.String(32), nullable=True, index=True)
+    company_name = db.Column(db.String(255), nullable=True, index=True)
+    party_name = db.Column(db.String(255), nullable=True)
+    event_date = db.Column(db.Date, nullable=True, index=True)
+    filing_date = db.Column(db.Date, nullable=True, index=True)
+    side = db.Column(db.String(16), nullable=True)  # buy/sale/pledge/etc
+    shares = db.Column(db.Float, nullable=True)
+    percent = db.Column(db.Float, nullable=True)
+    details = db.Column(db.Text, nullable=True)
+    source_url = db.Column(db.String(512), nullable=True)
+    raw_json = db.Column(db.Text, nullable=True)
+    fetched_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "external_id": self.external_id,
+            "ticker": self.ticker,
+            "company_name": self.company_name,
+            "party_name": self.party_name,
+            "event_date": self.event_date.isoformat() if self.event_date else None,
+            "filing_date": self.filing_date.isoformat() if self.filing_date else None,
+            "side": self.side,
+            "shares": self.shares,
+            "percent": self.percent,
+            "details": self.details,
+            "source_url": self.source_url,
+            "fetched_at": self.fetched_at.isoformat() if self.fetched_at else None,
+        }
+

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 from flask import Flask
@@ -23,7 +22,6 @@ def create_app(config_class: type[Config] = Config) -> Flask:
             "(example: FilingDesk you@example.com)."
         )
 
-    # Ensure SQLite parent directory exists for relative sqlite paths.
     db_uri = app.config["SQLALCHEMY_DATABASE_URI"]
     if db_uri.startswith("sqlite:///"):
         sqlite_path = db_uri.replace("sqlite:///", "", 1)
@@ -34,19 +32,28 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     CORS(app, resources={r"/api/*": {"origins": "*"}})
     db.init_app(app)
 
+    from app.routes.explore import explore_bp
+    from app.routes.financials import financials_bp
     from app.routes.health import health_bp
     from app.routes.insider import insider_bp
     from app.routes.markets import markets_bp
-    from app.routes.financials import financials_bp
-    from app.routes.explore import explore_bp
+    from app.routes.watchlists import watchlists_bp
 
     app.register_blueprint(health_bp)
     app.register_blueprint(markets_bp, url_prefix="/api/v1")
     app.register_blueprint(insider_bp, url_prefix="/api/v1")
     app.register_blueprint(financials_bp, url_prefix="/api/v1")
     app.register_blueprint(explore_bp, url_prefix="/api/v1")
+    app.register_blueprint(watchlists_bp, url_prefix="/api/v1")
 
     with app.app_context():
         db.create_all()
+        from app.utils.schema import ensure_sqlite_columns
+
+        ensure_sqlite_columns()
+
+    from app.services.scheduler import init_scheduler
+
+    init_scheduler(app)
 
     return app

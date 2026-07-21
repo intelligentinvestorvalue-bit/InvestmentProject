@@ -25,17 +25,63 @@ INCOME_TAGS: list[tuple[str, list[str]]] = [
             "SalesRevenueNet",
             "Revenues",
             "RevenueFromContractWithCustomerIncludingAssessedTax",
+            "SalesRevenueGoodsNet",
+            "SalesRevenueServicesNet",
+            "RevenueFromContractWithCustomerIncludingAssessedTax",
+            "TotalRevenuesAndOtherIncome",
+            "InterestAndDividendIncomeOperating",
+            "InterestIncomeExpenseNet",
+            "PremiumsEarnedNet",
         ],
     ),
-    ("CostOfRevenue", ["CostOfRevenue", "CostOfGoodsAndServicesSold", "CostOfGoodsSold"]),
+    (
+        "CostOfRevenue",
+        [
+            "CostOfRevenue",
+            "CostOfGoodsAndServicesSold",
+            "CostOfGoodsSold",
+            "CostOfServices",
+            "PolicyholderBenefitsAndClaimsIncurredNet",
+        ],
+    ),
     ("GrossProfit", ["GrossProfit"]),
     (
-        "OperatingIncome",
-        ["OperatingIncomeLoss", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"],
+        "ResearchAndDevelopment",
+        ["ResearchAndDevelopmentExpense", "ResearchAndDevelopmentExpenseExcludingAcquiredInProcessCost"],
     ),
-    ("NetIncome", ["NetIncomeLoss", "ProfitLoss"]),
+    (
+        "SellingGeneralAndAdministrative",
+        [
+            "SellingGeneralAndAdministrativeExpense",
+            "SellingAndMarketingExpense",
+            "GeneralAndAdministrativeExpense",
+        ],
+    ),
+    (
+        "OperatingIncome",
+        [
+            "OperatingIncomeLoss",
+            "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+            "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+        ],
+    ),
+    (
+        "InterestExpense",
+        ["InterestExpense", "InterestExpenseDebt", "InterestIncomeExpenseNonoperatingNet"],
+    ),
+    (
+        "IncomeBeforeTax",
+        [
+            "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+            "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+        ],
+    ),
+    ("IncomeTaxExpense", ["IncomeTaxExpenseBenefit"]),
+    ("NetIncome", ["NetIncomeLoss", "ProfitLoss", "NetIncomeLossAvailableToCommonStockholdersBasic"]),
     ("EPSBasic", ["EarningsPerShareBasic"]),
     ("EPSDiluted", ["EarningsPerShareDiluted"]),
+    ("SharesOutstandingBasic", ["WeightedAverageNumberOfSharesOutstandingBasic"]),
+    ("SharesOutstandingDiluted", ["WeightedAverageNumberOfDilutedSharesOutstanding"]),
 ]
 
 BALANCE_TAGS: list[tuple[str, list[str]]] = [
@@ -45,21 +91,97 @@ BALANCE_TAGS: list[tuple[str, list[str]]] = [
         "Cash",
         [
             "CashAndCashEquivalentsAtCarryingAmount",
+            "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
             "CashCashEquivalentsAndShortTermInvestments",
+            "CashAndCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
             "Cash",
         ],
     ),
+    (
+        "ShortTermInvestments",
+        [
+            "ShortTermInvestments",
+            "MarketableSecuritiesCurrent",
+            "AvailableForSaleSecuritiesDebtSecuritiesCurrent",
+        ],
+    ),
+    (
+        "AccountsReceivable",
+        ["AccountsReceivableNetCurrent", "ReceivablesNetCurrent", "AccountsReceivableNet"],
+    ),
+    ("Inventory", ["InventoryNet", "InventoryFinishedGoodsNetOfReserves"]),
     ("Liabilities", ["Liabilities"]),
     ("CurrentLiabilities", ["LiabilitiesCurrent"]),
-    ("LongTermDebt", ["LongTermDebt", "LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligations"]),
-    ("StockholdersEquity", ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]),
+    (
+        "AccountsPayable",
+        ["AccountsPayableCurrent", "AccountsPayableAndAccruedLiabilitiesCurrent"],
+    ),
+    (
+        "LongTermDebt",
+        [
+            "LongTermDebt",
+            "LongTermDebtNoncurrent",
+            "LongTermDebtAndCapitalLeaseObligations",
+            "LongTermDebtNoncurrent",
+            "DebtInstrumentCarryingAmount",
+        ],
+    ),
+    (
+        "StockholdersEquity",
+        [
+            "StockholdersEquity",
+            "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+            "PartnersCapital",
+        ],
+    ),
+    (
+        "RetainedEarnings",
+        ["RetainedEarningsAccumulatedDeficit", "RetainedEarnings"],
+    ),
 ]
 
 CASHFLOW_TAGS: list[tuple[str, list[str]]] = [
-    ("OperatingCashFlow", ["NetCashProvidedByUsedInOperatingActivities"]),
-    ("InvestingCashFlow", ["NetCashProvidedByUsedInInvestingActivities"]),
-    ("FinancingCashFlow", ["NetCashProvidedByUsedInFinancingActivities"]),
-    ("Capex", ["PaymentsToAcquirePropertyPlantAndEquipment", "PurchaseOfPropertyPlantAndEquipment"]),
+    (
+        "OperatingCashFlow",
+        [
+            "NetCashProvidedByUsedInOperatingActivities",
+            "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+        ],
+    ),
+    (
+        "InvestingCashFlow",
+        [
+            "NetCashProvidedByUsedInInvestingActivities",
+            "NetCashProvidedByUsedInInvestingActivitiesContinuingOperations",
+        ],
+    ),
+    (
+        "FinancingCashFlow",
+        [
+            "NetCashProvidedByUsedInFinancingActivities",
+            "NetCashProvidedByUsedInFinancingActivitiesContinuingOperations",
+        ],
+    ),
+    (
+        "Capex",
+        [
+            "PaymentsToAcquirePropertyPlantAndEquipment",
+            "PurchaseOfPropertyPlantAndEquipment",
+            "PaymentsToAcquireProductiveAssets",
+        ],
+    ),
+    (
+        "DividendsPaid",
+        ["PaymentsOfDividends", "PaymentsOfDividendsCommonStock", "Dividends"],
+    ),
+    (
+        "ShareRepurchases",
+        ["PaymentsForRepurchaseOfCommonStock", "PaymentsForRepurchaseOfEquity"],
+    ),
+    (
+        "FreeCashFlowProxy",
+        [],  # computed later if both OCF and Capex present
+    ),
 ]
 
 
@@ -128,6 +250,8 @@ def parse_financial_statements(facts_json: dict[str, Any], *, years: int = 10) -
         # year -> metric dict
         by_year: dict[int, dict[str, Any]] = {}
         for metric_name, candidates in tag_groups:
+            if not candidates:
+                continue
             node = None
             for tag in candidates:
                 if tag in taxonomy:
@@ -143,10 +267,20 @@ def parse_financial_statements(facts_json: dict[str, Any], *, years: int = 10) -
                     by_year[year]["filed_date"] = point["filed_date"].isoformat()
         return [by_year[y] for y in sorted(by_year.keys(), reverse=True)]
 
+    income = extract(INCOME_TAGS)
+    balance = extract(BALANCE_TAGS)
+    cash = extract(CASHFLOW_TAGS)
+    for row in cash:
+        ocf = row.get("OperatingCashFlow")
+        capex = row.get("Capex")
+        if ocf is not None and capex is not None:
+            # Capex is usually reported as a cash outflow (often negative already).
+            row["FreeCashFlowProxy"] = float(ocf) - abs(float(capex))
+
     return {
-        "income_statement": extract(INCOME_TAGS),
-        "balance_sheet": extract(BALANCE_TAGS),
-        "cash_flow": extract(CASHFLOW_TAGS),
+        "income_statement": income,
+        "balance_sheet": balance,
+        "cash_flow": cash,
     }
 
 

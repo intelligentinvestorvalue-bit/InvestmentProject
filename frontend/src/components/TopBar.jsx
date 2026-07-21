@@ -40,6 +40,9 @@ export default function TopBar({ market, onMarketChange }) {
         <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : undefined)}>
           Insider feed
         </NavLink>
+        <NavLink to="/watchlists" className={({ isActive }) => (isActive ? 'active' : undefined)}>
+          Watchlists
+        </NavLink>
         <NavLink to="/research" className={({ isActive }) => (isActive ? 'active' : undefined)}>
           Research
         </NavLink>

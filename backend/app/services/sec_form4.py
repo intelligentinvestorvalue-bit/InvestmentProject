@@ -479,13 +479,18 @@ def upsert_transactions(rows: list[dict[str, Any]]) -> int:
     return inserted
 
 
-def sync_us_insider_feed(*, days: int = 7, max_filings: Optional[int] = None) -> dict[str, Any]:
+def sync_us_insider_feed(
+    *,
+    days: int = 7,
+    max_filings: Optional[int] = None,
+    trigger: str = "manual",
+) -> dict[str, Any]:
     """Fetch recent Form 4s, parse open-market P/S trades, and cache them."""
     user_agent = current_app.config["SEC_USER_AGENT"]
     delay = current_app.config["SEC_REQUEST_DELAY_SECONDS"]
     limit = max_filings or current_app.config["SYNC_MAX_FILINGS"]
 
-    run = SyncRun(market="US", status="running")
+    run = SyncRun(market="US", status="running", trigger=trigger)
     db.session.add(run)
     db.session.commit()
 

@@ -42,6 +42,16 @@ export function syncInsider(market, payload = {}) {
   })
 }
 
+export function fetchDisclosures(params) {
+  const qs = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      qs.set(key, value)
+    }
+  })
+  return request(`/api/v1/insider/disclosures?${qs.toString()}`)
+}
+
 export function fetchFinancials(ticker, market, params = {}) {
   const qs = new URLSearchParams({ market, ...params })
   return request(`/api/v1/financials/${encodeURIComponent(ticker)}?${qs.toString()}`)
@@ -72,4 +82,43 @@ export function syncExplore(market, payload = {}) {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+export function fetchWatchlists(market) {
+  const qs = market ? `?market=${encodeURIComponent(market)}` : ''
+  return request(`/api/v1/watchlists${qs}`)
+}
+
+export function createWatchlist(payload) {
+  return request('/api/v1/watchlists', { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function fetchWatchlist(id) {
+  return request(`/api/v1/watchlists/${id}`)
+}
+
+export function renameWatchlist(id, name) {
+  return request(`/api/v1/watchlists/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name }),
+  })
+}
+
+export function deleteWatchlist(id) {
+  return request(`/api/v1/watchlists/${id}`, { method: 'DELETE' })
+}
+
+export function addWatchlistItem(id, payload) {
+  return request(`/api/v1/watchlists/${id}/items`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function removeWatchlistItem(id, itemId) {
+  return request(`/api/v1/watchlists/${id}/items/${itemId}`, { method: 'DELETE' })
+}
+
+export function fetchHealth() {
+  return request('/api/health')
 }

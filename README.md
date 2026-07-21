@@ -7,8 +7,11 @@ Personal research desk for **US and India** markets.
 | Area | US | India |
 |---|---|---|
 | Insider open-market buy/sell feed | SEC Form 4 (P/S) | NSE PIT Market Purchase / Sale (NSE+BSE reported) |
-| Company research | SEC XBRL multi-year statements | Yahoo Finance annual statements (.NS / .BO) |
+| Pledge / SAST views | — | NSE pledge + SAST Reg.29 |
+| Company research | SEC XBRL multi-year statements (expanded GAAP tags + FCF proxy) | Yahoo Finance annual statements (.NS / .BO) |
 | Sector explore | SIC-based sectors from SEC submissions | Yahoo sector/industry metadata |
+| Watchlists | Saved ticker screens | Saved ticker screens |
+| Scheduled sync | Auto Form 4 refresh | Auto PIT + pledge/SAST refresh |
 
 Legacy notes from earlier experiments live in `docs/legacy/`.
 
@@ -54,11 +57,15 @@ Suggested first-run flow:
 | `GET` | `/api/v1/insider/transactions` | Filtered insider feed (`market=US\|IN`) |
 | `GET` | `/api/v1/insider/meta` | Filter options + stats |
 | `POST` | `/api/v1/insider/sync` | Pull recent insider filings |
+| `GET` | `/api/v1/insider/disclosures` | India pledge / SAST views (`kind=pledge\|sast`) |
 | `GET` | `/api/v1/financials/<ticker>` | Financials / summary |
 | `GET` | `/api/v1/explore/sectors` | Sector list |
 | `GET` | `/api/v1/explore/industries` | Industry list |
 | `GET` | `/api/v1/explore/companies` | Company browse |
 | `POST` | `/api/v1/explore/sync` | Enrich sector metadata |
+| `GET/POST` | `/api/v1/watchlists` | List / create watchlists |
+| `GET/PATCH/DELETE` | `/api/v1/watchlists/<id>` | Watchlist detail / rename / delete |
+| `POST/DELETE` | `/api/v1/watchlists/<id>/items` | Add / remove tickers |
 
 ---
 
@@ -83,6 +90,5 @@ pytest -q
 
 ## Roadmap remaining
 
-- Watchlists / saved screens
-- Deeper India PIT coverage windows / scheduled sync
 - Optional Postgres for longer-term local use
+- Optional Docker packaging
