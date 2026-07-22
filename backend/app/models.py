@@ -293,3 +293,132 @@ class IndiaDisclosure(db.Model):
             "fetched_at": self.fetched_at.isoformat() if self.fetched_at else None,
         }
 
+
+
+class UnusualOptionAlert(db.Model):
+    """Cached unusual options activity rows from Yahoo chain scans."""
+
+    __tablename__ = "unusual_option_alerts"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "scan_date",
+            "contract_symbol",
+            "underlying",
+            name="uq_uoa_alert_day_contract",
+        ),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    market = db.Column(db.String(8), nullable=False, default="US", index=True)
+    underlying = db.Column(db.String(32), nullable=False, index=True)
+    contract_symbol = db.Column(db.String(64), nullable=False, index=True)
+    option_type = db.Column(db.String(8), nullable=False)  # call | put
+    strike = db.Column(db.Float, nullable=True)
+    expiration = db.Column(db.Date, nullable=True, index=True)
+    dte = db.Column(db.Integer, nullable=True)
+
+    last_price = db.Column(db.Float, nullable=True)
+    bid = db.Column(db.Float, nullable=True)
+    ask = db.Column(db.Float, nullable=True)
+    volume = db.Column(db.Float, nullable=True)
+    open_interest = db.Column(db.Float, nullable=True)
+    implied_volatility = db.Column(db.Float, nullable=True)
+    premium = db.Column(db.Float, nullable=True)
+    vol_oi = db.Column(db.Float, nullable=True)
+    score = db.Column(db.Float, nullable=True, index=True)
+
+    sentiment = db.Column(db.String(16), nullable=True, index=True)  # bullish|bearish|mixed|unclear
+    aggressiveness = db.Column(db.String(24), nullable=True)  # buy_ask|sell_bid|mid|unknown
+    reason = db.Column(db.String(512), nullable=True)
+    universe = db.Column(db.String(24), nullable=True)  # watchlist|liquid100
+    scan_date = db.Column(db.Date, nullable=False, index=True)
+    scanned_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "market": self.market,
+            "underlying": self.underlying,
+            "contract_symbol": self.contract_symbol,
+            "option_type": self.option_type,
+            "strike": self.strike,
+            "expiration": self.expiration.isoformat() if self.expiration else None,
+            "dte": self.dte,
+            "last_price": self.last_price,
+            "bid": self.bid,
+            "ask": self.ask,
+            "volume": self.volume,
+            "open_interest": self.open_interest,
+            "implied_volatility": self.implied_volatility,
+            "premium": self.premium,
+            "vol_oi": self.vol_oi,
+            "score": self.score,
+            "sentiment": self.sentiment,
+            "aggressiveness": self.aggressiveness,
+            "reason": self.reason,
+            "universe": self.universe,
+            "scan_date": self.scan_date.isoformat() if self.scan_date else None,
+            "scanned_at": self.scanned_at.isoformat() if self.scanned_at else None,
+        }
+
+
+class AppNotification(db.Model):
+    """In-app notifications (UOA and future alert types)."""
+
+    __tablename__ = "app_notifications"
+
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(32), nullable=False, index=True)  # uoa
+    title = db.Column(db.String(255), nullable=False)
+    body = db.Column(db.Text, nullable=True)
+    severity = db.Column(db.String(16), nullable=False, default="info")
+    ticker = db.Column(db.String(32), nullable=True, index=True)
+    payload_json = db.Column(db.Text, nullable=True)
+    is_read = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "title": self.title,
+            "body": self.body,
+            "severity": self.severity,
+            "ticker": self.ticker,
+            "payload_json": self.payload_json,
+            "is_read": bool(self.is_read),
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class OptionsScanRun(db.Model):
+    """Tracks unusual options scan attempts."""
+
+    __tablename__ = "options_scan_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    market = db.Column(db.String(8), nullable=False, default="US")
+    universe = db.Column(db.String(24), nullable=False, default="watchlist")
+    trigger = db.Column(db.String(32), nullable=False, default="manual")
+    started_at = db.Column(db.DateTime, nullable=False, default=utcnow)
+    finished_at = db.Column(db.DateTime, nullable=True)
+    status = db.Column(db.String(32), nullable=False, default="running")
+    tickers_scanned = db.Column(db.Integer, default=0)
+    alerts_upserted = db.Column(db.Integer, default=0)
+    notifications_created = db.Column(db.Integer, default=0)
+    error_message = db.Column(db.Text, nullable=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "market": self.market,
+            "universe": self.universe,
+            "trigger": self.trigger,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "status": self.status,
+            "tickers_scanned": self.tickers_scanned,
+            "alerts_upserted": self.alerts_upserted,
+            "notifications_created": self.notifications_created,
+            "error_message": self.error_message,
+        }

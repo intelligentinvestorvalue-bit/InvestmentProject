@@ -37,6 +37,8 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     from app.routes.health import health_bp
     from app.routes.insider import insider_bp
     from app.routes.markets import markets_bp
+    from app.routes.notifications import notifications_bp
+    from app.routes.options import options_bp
     from app.routes.watchlists import watchlists_bp
 
     app.register_blueprint(health_bp)
@@ -45,6 +47,8 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     app.register_blueprint(financials_bp, url_prefix="/api/v1")
     app.register_blueprint(explore_bp, url_prefix="/api/v1")
     app.register_blueprint(watchlists_bp, url_prefix="/api/v1")
+    app.register_blueprint(options_bp, url_prefix="/api/v1")
+    app.register_blueprint(notifications_bp, url_prefix="/api/v1")
 
     with app.app_context():
         db.create_all()

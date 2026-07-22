@@ -122,3 +122,43 @@ export function removeWatchlistItem(id, itemId) {
 export function fetchHealth() {
   return request('/api/health')
 }
+
+export function fetchUnusualOptions(params = {}) {
+  const qs = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      qs.set(key, value)
+    }
+  })
+  return request(`/api/v1/options/unusual?${qs.toString()}`)
+}
+
+export function fetchUnusualMeta() {
+  return request('/api/v1/options/unusual/meta')
+}
+
+export function scanUnusualOptions(payload = {}) {
+  return request('/api/v1/options/unusual/scan', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}
+
+export function fetchNotifications(params = {}) {
+  const qs = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      qs.set(key, value)
+    }
+  })
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  return request(`/api/v1/notifications${suffix}`)
+}
+
+export function markNotificationRead(id) {
+  return request(`/api/v1/notifications/${id}/read`, { method: 'POST' })
+}
+
+export function markAllNotificationsRead() {
+  return request('/api/v1/notifications/read-all', { method: 'POST' })
+}

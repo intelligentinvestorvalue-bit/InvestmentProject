@@ -38,6 +38,44 @@ def _run_in_sync(app: Flask) -> None:
             logger.exception("Scheduled India sync failed")
 
 
+def _run_uoa_poll(app: Flask) -> None:
+    """Near-real-time-ish delayed scan over watchlist + a capped liquid set."""
+    with app.app_context():
+        if not app.config.get("UOA_ENABLED", True):
+            return
+        from app.services.uoa_scanner import run_uoa_scan
+
+        try:
+            result = run_uoa_scan(
+                include_watchlist=True,
+                include_liquid=True,
+                trigger="poll",
+                max_tickers=int(app.config.get("UOA_POLL_MAX_TICKERS", 25)),
+            )
+            logger.info("UOA poll completed: %s", result)
+        except Exception:  # noqa: BLE001
+            logger.exception("UOA poll failed")
+
+
+def _run_uoa_eod(app: Flask) -> None:
+    """Broader end-of-day / delayed full-ish scan."""
+    with app.app_context():
+        if not app.config.get("UOA_ENABLED", True):
+            return
+        from app.services.uoa_scanner import run_uoa_scan
+
+        try:
+            result = run_uoa_scan(
+                include_watchlist=True,
+                include_liquid=True,
+                trigger="eod",
+                max_tickers=int(app.config.get("UOA_EOD_MAX_TICKERS", 80)),
+            )
+            logger.info("UOA EOD completed: %s", result)
+        except Exception:  # noqa: BLE001
+            logger.exception("UOA EOD failed")
+
+
 def init_scheduler(app: Flask) -> Optional[BackgroundScheduler]:
     """Start APScheduler once per process when enabled."""
     global _scheduler
@@ -57,6 +95,8 @@ def init_scheduler(app: Flask) -> Optional[BackgroundScheduler]:
     scheduler = BackgroundScheduler(daemon=True)
     us_minutes = int(app.config.get("US_SYNC_INTERVAL_MINUTES", 60))
     in_minutes = int(app.config.get("IN_SYNC_INTERVAL_MINUTES", 90))
+    uoa_poll_minutes = int(app.config.get("UOA_POLL_INTERVAL_MINUTES", 20))
+    uoa_eod_hour = int(app.config.get("UOA_EOD_HOUR_UTC", 21))
 
     scheduler.add_job(
         _run_us_sync,
@@ -78,12 +118,36 @@ def init_scheduler(app: Flask) -> Optional[BackgroundScheduler]:
         max_instances=1,
         coalesce=True,
     )
+    if app.config.get("UOA_ENABLED", True):
+        scheduler.add_job(
+            _run_uoa_poll,
+            "interval",
+            minutes=max(uoa_poll_minutes, 10),
+            args=[app],
+            id="uoa_poll",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.add_job(
+            _run_uoa_eod,
+            "cron",
+            hour=max(0, min(uoa_eod_hour, 23)),
+            minute=10,
+            args=[app],
+            id="uoa_eod",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
     scheduler.start()
     _scheduler = scheduler
     logger.info(
-        "Scheduler started (US every %sm, IN every %sm)",
+        "Scheduler started (US %sm, IN %sm, UOA poll %sm, UOA EOD %s:10 UTC)",
         max(us_minutes, 15),
         max(in_minutes, 30),
+        max(uoa_poll_minutes, 10),
+        max(0, min(uoa_eod_hour, 23)),
     )
     return scheduler
 

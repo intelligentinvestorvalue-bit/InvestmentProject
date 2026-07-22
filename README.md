@@ -11,7 +11,8 @@ Personal research desk for **US and India** markets.
 | Company research | SEC XBRL multi-year statements (expanded GAAP tags + FCF proxy) | Yahoo Finance annual statements (.NS / .BO) |
 | Sector explore | SIC-based sectors from SEC submissions | Yahoo sector/industry metadata |
 | Watchlists | Saved ticker screens | Saved ticker screens |
-| Scheduled sync | Auto Form 4 refresh | Auto PIT + pledge/SAST refresh |
+| Unusual options (UOA) | Yahoo delayed chains: watchlist + liquid universe, call/put + bid/ask direction, in-app alerts | Planned (India F&O later) |
+| Scheduled sync | Auto Form 4 refresh + UOA poll/EOD | Auto PIT + pledge/SAST refresh |
 
 Legacy notes from earlier experiments live in `docs/legacy/`.
 
@@ -45,6 +46,7 @@ Suggested first-run flow:
 2. **India → Insider feed → Sync NSE/BSE open-market PIT**
 3. **Research** a ticker (e.g. `AAPL` / `RELIANCE`)
 4. **Explore → Enrich sector metadata**
+5. **US → Options → Scan sample** (Yahoo delayed UOA; in-app bell for alerts)
 
 ---
 
@@ -66,6 +68,12 @@ Suggested first-run flow:
 | `GET/POST` | `/api/v1/watchlists` | List / create watchlists |
 | `GET/PATCH/DELETE` | `/api/v1/watchlists/<id>` | Watchlist detail / rename / delete |
 | `POST/DELETE` | `/api/v1/watchlists/<id>/items` | Add / remove tickers |
+| `GET` | `/api/v1/options/unusual` | Unusual options alerts (`market=US`) |
+| `POST` | `/api/v1/options/unusual/scan` | Manual Yahoo chain UOA scan |
+| `GET` | `/api/v1/options/unusual/meta` | UOA thresholds + timing |
+| `GET` | `/api/v1/notifications` | In-app notifications |
+| `POST` | `/api/v1/notifications/<id>/read` | Mark one notification read |
+| `POST` | `/api/v1/notifications/read-all` | Mark all notifications read |
 
 ---
 
@@ -81,10 +89,10 @@ pytest -q
 
 ## Data sources
 
-| Market | Insider | Financials / explore |
-|---|---|---|
-| US | SEC Form 4 atom + ownership XML (free) | SEC XBRL companyfacts + submissions SIC |
-| India | NSE corporates-pit Market Purchase/Sale (free; includes BSE-reported rows) | Yahoo Finance annual statements + sector/industry (free) |
+| Market | Insider | Financials / explore | Options |
+|---|---|---|---|
+| US | SEC Form 4 atom + ownership XML (free) | SEC XBRL companyfacts + submissions SIC | Yahoo/yfinance delayed chains (UOA) |
+| India | NSE corporates-pit Market Purchase/Sale (free; includes BSE-reported rows) | Yahoo Finance annual statements + sector/industry (free) | Planned |
 
 ---
 

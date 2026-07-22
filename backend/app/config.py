@@ -36,3 +36,18 @@ class Config:
     US_SYNC_DAYS = int(os.getenv("US_SYNC_DAYS", "7"))
     US_SYNC_MAX_FILINGS = int(os.getenv("US_SYNC_MAX_FILINGS", "25"))
     IN_SYNC_DAYS = int(os.getenv("IN_SYNC_DAYS", "120"))
+
+    # Unusual options activity (Yahoo / yfinance)
+    UOA_ENABLED = _as_bool(os.getenv("UOA_ENABLED"), True)
+    UOA_POLL_INTERVAL_MINUTES = int(os.getenv("UOA_POLL_INTERVAL_MINUTES", "20"))
+    UOA_EOD_HOUR_UTC = int(os.getenv("UOA_EOD_HOUR_UTC", "21"))  # ~4pm ET approx depending on DST
+    UOA_MAX_EXPIRATIONS = int(os.getenv("UOA_MAX_EXPIRATIONS", "3"))
+    UOA_MAX_DTE = int(os.getenv("UOA_MAX_DTE", "90"))
+    UOA_MIN_VOLUME = float(os.getenv("UOA_MIN_VOLUME", "200"))
+    UOA_MIN_VOL_OI = float(os.getenv("UOA_MIN_VOL_OI", "2.0"))
+    UOA_MIN_PREMIUM = float(os.getenv("UOA_MIN_PREMIUM", "25000"))
+    UOA_NOTIFY_MIN_SCORE = float(os.getenv("UOA_NOTIFY_MIN_SCORE", "35"))
+    UOA_MAX_ALERTS_PER_SCAN = int(os.getenv("UOA_MAX_ALERTS_PER_SCAN", "150"))
+    UOA_TICKER_SLEEP_SECONDS = float(os.getenv("UOA_TICKER_SLEEP_SECONDS", "0.35"))
+    UOA_POLL_MAX_TICKERS = int(os.getenv("UOA_POLL_MAX_TICKERS", "25"))
+    UOA_EOD_MAX_TICKERS = int(os.getenv("UOA_EOD_MAX_TICKERS", "80"))

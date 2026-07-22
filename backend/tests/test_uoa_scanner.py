@@ -1,0 +1,41 @@
+"""Unit tests for unusual options scoring helpers (no network)."""
+
+from app.services.uoa_scanner import classify_aggressiveness, classify_sentiment, score_contract
+
+
+def test_classify_aggressiveness_near_ask():
+    assert classify_aggressiveness(last=1.95, bid=1.80, ask=2.00) == "buy_ask"
+
+
+def test_classify_aggressiveness_near_bid():
+    assert classify_aggressiveness(last=1.82, bid=1.80, ask=2.00) == "sell_bid"
+
+
+def test_classify_aggressiveness_mid_and_unknown():
+    assert classify_aggressiveness(last=1.90, bid=1.80, ask=2.00) == "mid"
+    assert classify_aggressiveness(last=None, bid=1.0, ask=1.1) == "unknown"
+
+
+def test_classify_sentiment_call_put_bias():
+    sentiment, reason = classify_sentiment("call", "buy_ask")
+    assert sentiment == "bullish"
+    assert "call" in reason.lower()
+    assert "ask" in reason.lower()
+
+    sentiment, reason = classify_sentiment("put", "buy_ask")
+    assert sentiment == "bearish"
+    assert "put" in reason.lower()
+
+
+def test_classify_sentiment_sell_bid_mixed():
+    sentiment, _ = classify_sentiment("call", "sell_bid")
+    assert sentiment == "mixed"
+    sentiment, _ = classify_sentiment("put", "sell_bid")
+    assert sentiment == "mixed"
+
+
+def test_score_contract_ranks_high_vol_oi_and_premium():
+    quiet = score_contract(volume=200, open_interest=100, premium=30_000, vol_oi=2.0, dte=30)
+    loud = score_contract(volume=5000, open_interest=200, premium=2_000_000, vol_oi=25.0, dte=21)
+    assert loud > quiet
+    assert quiet > 0
