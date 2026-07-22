@@ -20,7 +20,12 @@ def _run_us_sync(app: Flask) -> None:
         days = int(app.config.get("US_SYNC_DAYS", 7))
         max_filings = int(app.config.get("US_SYNC_MAX_FILINGS", app.config.get("SYNC_MAX_FILINGS", 25)))
         try:
-            result = sync_us_insider_feed(days=days, max_filings=max_filings, trigger="scheduled")
+            result = sync_us_insider_feed(
+                days=days,
+                max_filings=max_filings,
+                trigger="scheduled",
+                mode="recent",
+            )
             logger.info("Scheduled US sync completed: %s", result)
         except Exception:  # noqa: BLE001
             logger.exception("Scheduled US sync failed")

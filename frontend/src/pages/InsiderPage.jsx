@@ -42,12 +42,15 @@ export default function InsiderPage({ market }) {
   const [scheduler, setScheduler] = useState(null)
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [backfilling, setBackfilling] = useState(false)
   const [error, setError] = useState('')
+  const [syncNote, setSyncNote] = useState('')
 
   const pageCount = useMemo(
     () => Math.max(1, Math.ceil((data.total || 0) / (data.page_size || 50))),
     [data.total, data.page_size],
   )
+  const busy = syncing || backfilling
 
   useEffect(() => {
     setFilters(EMPTY_FILTERS)
@@ -55,6 +58,7 @@ export default function InsiderPage({ market }) {
     setPage(1)
     setView('open_market')
     setError('')
+    setSyncNote('')
   }, [market])
 
   useEffect(() => {
@@ -74,7 +78,7 @@ export default function InsiderPage({ market }) {
     return () => {
       cancelled = true
     }
-  }, [market, syncing])
+  }, [market, syncing, backfilling])
 
   useEffect(() => {
     let cancelled = false
@@ -134,9 +138,18 @@ export default function InsiderPage({ market }) {
   async function handleSync() {
     setSyncing(true)
     setError('')
+    setSyncNote('')
     try {
-      const payload = market === 'US' ? { days: 7, max_filings: 25 } : { days: 120, include_extra: true }
-      await syncInsider(market, payload)
+      const payload =
+        market === 'US'
+          ? { mode: 'recent', days: 7, max_filings: 25 }
+          : { days: 120, include_extra: true }
+      const result = await syncInsider(market, payload)
+      setSyncNote(
+        market === 'US'
+          ? `Recent sync: ${result.transactions_upserted || 0} new open-market rows from ${result.filings_seen || 0} filings.`
+          : `Synced ${result.transactions_upserted || 0} rows.`,
+      )
       setPage(1)
       setApplied((prev) => ({ ...prev }))
     } catch (err) {
@@ -146,9 +159,37 @@ export default function InsiderPage({ market }) {
     }
   }
 
+  async function handleBackfill() {
+    setBackfilling(true)
+    setError('')
+    setSyncNote('')
+    try {
+      const days = meta?.backfill_days_default || 30
+      const maxFilings = meta?.backfill_max_filings_default || 300
+      const result = await syncInsider('US', {
+        mode: 'backfill',
+        days,
+        max_filings: maxFilings,
+      })
+      setSyncNote(
+        `Backfill complete (${result.days || days}d): ${result.transactions_upserted || 0} new rows from ${result.filings_seen || 0} filings. Use filters on the local DB going forward.`,
+      )
+      setPage(1)
+      setApplied((prev) => ({ ...prev }))
+    } catch (err) {
+      setError(err.message || 'Backfill failed')
+    } finally {
+      setBackfilling(false)
+    }
+  }
+
   const stats = meta?.stats
   const syncLabel = market === 'US' ? 'Sync recent Form 4s' : 'Sync PIT + pledge/SAST'
   const showOpenMarket = view === 'open_market'
+  const coverageHint =
+    market === 'US' && stats?.filing_date_min && stats?.filing_date_max
+      ? `Local coverage: ${formatDate(stats.filing_date_min)} → ${formatDate(stats.filing_date_max)}`
+      : null
 
   return (
     <div>
@@ -156,7 +197,7 @@ export default function InsiderPage({ market }) {
         <h1>{market === 'US' ? 'US open-market insider feed' : 'India insider & disclosures'}</h1>
         <p>
           {market === 'US'
-            ? 'Track Form 4 open-market buys (P) and sells (S) across US filers.'
+            ? 'Track Form 4 open-market buys (P) and sells (S) across US filers. Backfill once to seed ~30 days locally, then filter the DB; scheduled sync keeps it current.'
             : 'Open-market PIT plus separate pledge and SAST Reg.29 views (NSE/BSE reported).'}{' '}
           Scheduled sync keeps feeds fresh in the background.
         </p>
@@ -169,11 +210,13 @@ export default function InsiderPage({ market }) {
             <p>
               {meta?.latest_sync
                 ? `Last sync: ${meta.latest_sync.status}${meta.latest_sync.trigger ? ` (${meta.latest_sync.trigger})` : ''} · ${meta.latest_sync.transactions_upserted || 0} open-market rows`
-                : 'No sync yet — pull recent filings to populate the feed.'}
+                : 'No sync yet — pull recent filings or run a one-time backfill.'}
               {scheduler?.running
                 ? ` · Scheduler on (${(scheduler.jobs || []).length} jobs)`
                 : ' · Scheduler off'}
+              {coverageHint ? ` · ${coverageHint}` : ''}
             </p>
+            {syncNote ? <p className="muted">{syncNote}</p> : null}
           </div>
           <div className="stats">
             <div className="stat">
@@ -189,9 +232,14 @@ export default function InsiderPage({ market }) {
               <span>Sells</span>
             </div>
             <div className="actions">
-              <button className="btn btn-primary" type="button" onClick={handleSync} disabled={syncing}>
+              <button className="btn btn-primary" type="button" onClick={handleSync} disabled={busy}>
                 {syncing ? 'Syncing…' : syncLabel}
               </button>
+              {market === 'US' ? (
+                <button className="btn btn-ghost" type="button" onClick={handleBackfill} disabled={busy}>
+                  {backfilling ? 'Backfilling…' : 'Backfill last 30 days'}
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
@@ -268,6 +316,24 @@ export default function InsiderPage({ market }) {
           {showOpenMarket ? (
             <>
               <div className="field">
+                <label htmlFor="filing_date_from">Filing from</label>
+                <input
+                  id="filing_date_from"
+                  type="date"
+                  value={filters.filing_date_from}
+                  onChange={(e) => updateFilter('filing_date_from', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="filing_date_to">Filing to</label>
+                <input
+                  id="filing_date_to"
+                  type="date"
+                  value={filters.filing_date_to}
+                  onChange={(e) => updateFilter('filing_date_to', e.target.value)}
+                />
+              </div>
+              <div className="field">
                 <label htmlFor="min_value">Min value</label>
                 <input
                   id="min_value"
@@ -275,6 +341,17 @@ export default function InsiderPage({ market }) {
                   min="0"
                   value={filters.min_value}
                   onChange={(e) => updateFilter('min_value', e.target.value)}
+                  placeholder={market === 'US' ? '100000' : ''}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="max_value">Max value</label>
+                <input
+                  id="max_value"
+                  type="number"
+                  min="0"
+                  value={filters.max_value}
+                  onChange={(e) => updateFilter('max_value', e.target.value)}
                 />
               </div>
               <div className="field">
@@ -393,7 +470,14 @@ export default function InsiderPage({ market }) {
             )
           ) : (
             <div className="empty muted">
-              No rows yet. Click <strong>{syncLabel}</strong> to load data.
+              No rows yet. Click <strong>{syncLabel}</strong>
+              {market === 'US' ? (
+                <>
+                  {' '}
+                  or <strong>Backfill last 30 days</strong>
+                </>
+              ) : null}{' '}
+              to load data.
             </div>
           )}
         </div>

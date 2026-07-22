@@ -29,12 +29,15 @@ class Config:
     SYNC_MAX_FILINGS = int(os.getenv("SYNC_MAX_FILINGS", "40"))
     SEC_REQUEST_DELAY_SECONDS = float(os.getenv("SEC_REQUEST_DELAY_SECONDS", "0.12"))
 
-    # Scheduled sync
+    # Scheduled sync (incremental / recent Atom feed — not a full 30-day pull)
     SCHEDULER_ENABLED = _as_bool(os.getenv("SCHEDULER_ENABLED"), True)
     US_SYNC_INTERVAL_MINUTES = int(os.getenv("US_SYNC_INTERVAL_MINUTES", "60"))
     IN_SYNC_INTERVAL_MINUTES = int(os.getenv("IN_SYNC_INTERVAL_MINUTES", "90"))
     US_SYNC_DAYS = int(os.getenv("US_SYNC_DAYS", "7"))
     US_SYNC_MAX_FILINGS = int(os.getenv("US_SYNC_MAX_FILINGS", "25"))
+    # One-time seed of local insider DB via EFTS date window
+    US_BACKFILL_DAYS = int(os.getenv("US_BACKFILL_DAYS", "30"))
+    US_BACKFILL_MAX_FILINGS = int(os.getenv("US_BACKFILL_MAX_FILINGS", "300"))
     IN_SYNC_DAYS = int(os.getenv("IN_SYNC_DAYS", "120"))
 
     # Unusual options activity (Yahoo / yfinance)

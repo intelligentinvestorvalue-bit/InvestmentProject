@@ -209,48 +209,101 @@ def parse_form4_xml(
     return rows
 
 
+def _hit_to_filing(source: dict[str, Any]) -> Optional[dict[str, Any]]:
+    accession = source.get("adsh") or source.get("accession_no") or source.get("file_num")
+    if not accession:
+        return None
+    display = source.get("display_names") or []
+    ciks = source.get("ciks") or []
+    return {
+        "accession_number": accession,
+        "cik": str(ciks[0] if ciks else source.get("cik") or "").zfill(10),
+        "filing_date": parse_date(source.get("file_date") or source.get("period_of_report")),
+        "company_name": display[0] if display else None,
+        "ticker": None,
+        "form": source.get("form") or "4",
+    }
+
+
+def _form4_from_efts(client: SecEdgarClient, *, days: int, limit: int) -> list[dict[str, Any]]:
+    """Paginated EFTS Form 4 discovery for a filing-date window (used for one-time backfill)."""
+    end = date.today()
+    start = end - timedelta(days=max(days, 1))
+    page_size = 100
+    filings: list[dict[str, Any]] = []
+    offset = 0
+    seen: set[str] = set()
+
+    while len(filings) < limit:
+        size = min(page_size, limit - len(filings))
+        params = {
+            "forms": "4",
+            "dateRange": "custom",
+            "startdt": start.isoformat(),
+            "enddt": end.isoformat(),
+            "from": offset,
+            "size": size,
+        }
+        try:
+            response = client.get(f"{client.EFTS}/LATEST/search-index", params=params)
+            payload = response.json()
+            hits = payload.get("hits", {}).get("hits", [])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("EFTS Form 4 search failed at offset %s: %s", offset, exc)
+            break
+
+        if not hits:
+            break
+
+        for hit in hits:
+            row = _hit_to_filing(hit.get("_source", {}) or {})
+            if not row:
+                continue
+            key = normalize_accession(row["accession_number"])
+            if key in seen:
+                continue
+            seen.add(key)
+            filings.append(row)
+            if len(filings) >= limit:
+                break
+
+        if len(hits) < size:
+            break
+        offset += len(hits)
+
+    return filings[:limit]
+
+
 def search_recent_form4_filings(client: SecEdgarClient, *, days: int, limit: int) -> list[dict[str, Any]]:
-    """Discover recent Form 4 filings via current-feed, then EFTS, then issuer sample."""
+    """Discover recent Form 4 filings via current Atom feed, then EFTS, then issuer sample."""
     filings = _form4_from_current_atom(client, limit=limit)
     if filings:
         return filings[:limit]
 
-    end = date.today()
-    start = end - timedelta(days=max(days, 1))
-    params = {
-        "forms": "4",
-        "dateRange": "custom",
-        "startdt": start.isoformat(),
-        "enddt": end.isoformat(),
-        "from": 0,
-        "size": min(limit, 100),
-    }
-    try:
-        response = client.get(f"{client.EFTS}/LATEST/search-index", params=params)
-        payload = response.json()
-        hits = payload.get("hits", {}).get("hits", [])
-        efts_filings: list[dict[str, Any]] = []
-        for hit in hits:
-            source = hit.get("_source", {})
-            accession = source.get("adsh") or source.get("accession_no") or source.get("file_num")
-            if not accession:
-                continue
-            display = source.get("display_names") or []
-            ciks = source.get("ciks") or []
-            efts_filings.append(
-                {
-                    "accession_number": accession,
-                    "cik": str(ciks[0] if ciks else source.get("cik") or "").zfill(10),
-                    "filing_date": parse_date(source.get("file_date") or source.get("period_of_report")),
-                    "company_name": display[0] if display else None,
-                    "ticker": None,
-                    "form": source.get("form") or "4",
-                }
-            )
-        if efts_filings:
-            return efts_filings[:limit]
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("EFTS Form 4 search failed (%s); falling back to company sample", exc)
+    efts_filings = _form4_from_efts(client, days=days, limit=limit)
+    if efts_filings:
+        return efts_filings
+
+    return _fallback_form4_from_sample_issuers(client, limit=limit)
+
+
+def search_backfill_form4_filings(client: SecEdgarClient, *, days: int, limit: int) -> list[dict[str, Any]]:
+    """One-time windowed discovery: EFTS date range first, Atom for freshest gaps, then sample."""
+    by_accession: dict[str, dict[str, Any]] = {}
+
+    for filing in _form4_from_efts(client, days=days, limit=limit):
+        key = normalize_accession(filing["accession_number"])
+        by_accession[key] = filing
+
+    # Pull a slice of the current feed so same-day filings missing from EFTS still land.
+    for filing in _form4_from_current_atom(client, limit=min(limit, 100)):
+        key = normalize_accession(filing["accession_number"])
+        by_accession.setdefault(key, filing)
+
+    filings = list(by_accession.values())
+    filings.sort(key=lambda row: row.get("filing_date") or date.min, reverse=True)
+    if filings:
+        return filings[:limit]
 
     return _fallback_form4_from_sample_issuers(client, limit=limit)
 
@@ -484,11 +537,26 @@ def sync_us_insider_feed(
     days: int = 7,
     max_filings: Optional[int] = None,
     trigger: str = "manual",
+    mode: str = "recent",
 ) -> dict[str, Any]:
-    """Fetch recent Form 4s, parse open-market P/S trades, and cache them."""
+    """Fetch Form 4s, parse open-market P/S trades, and cache them.
+
+    mode:
+      - recent: Atom current feed (scheduled / normal sync)
+      - backfill: EFTS filing-date window (one-time seed of local DB)
+    """
     user_agent = current_app.config["SEC_USER_AGENT"]
     delay = current_app.config["SEC_REQUEST_DELAY_SECONDS"]
-    limit = max_filings or current_app.config["SYNC_MAX_FILINGS"]
+    sync_mode = (mode or "recent").strip().lower()
+    if sync_mode not in {"recent", "backfill"}:
+        sync_mode = "recent"
+
+    if sync_mode == "backfill":
+        limit = max_filings or current_app.config.get(
+            "US_BACKFILL_MAX_FILINGS", current_app.config["SYNC_MAX_FILINGS"]
+        )
+    else:
+        limit = max_filings or current_app.config["SYNC_MAX_FILINGS"]
 
     run = SyncRun(market="US", status="running", trigger=trigger)
     db.session.add(run)
@@ -499,7 +567,10 @@ def sync_us_insider_feed(
     seen = 0
 
     try:
-        filings = search_recent_form4_filings(client, days=days, limit=limit)
+        if sync_mode == "backfill":
+            filings = search_backfill_form4_filings(client, days=days, limit=limit)
+        else:
+            filings = search_recent_form4_filings(client, days=days, limit=limit)
         seen = len(filings)
         for filing in filings:
             # Ensure CIK / primary doc when missing via submissions if ticker known
@@ -535,7 +606,10 @@ def sync_us_insider_feed(
         run.transactions_upserted = upserted
         run.finished_at = datetime.now(timezone.utc)
         db.session.commit()
-        return run.to_dict()
+        result = run.to_dict()
+        result["mode"] = sync_mode
+        result["days"] = days
+        return result
     except Exception as exc:  # noqa: BLE001
         run.status = "failed"
         run.filings_seen = seen

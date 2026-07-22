@@ -294,6 +294,8 @@ def insider_meta():
             },
             "latest_sync": latest_sync.to_dict() if latest_sync else None,
             "sync_max_filings_default": current_app.config["SYNC_MAX_FILINGS"],
+            "backfill_days_default": current_app.config.get("US_BACKFILL_DAYS", 30),
+            "backfill_max_filings_default": current_app.config.get("US_BACKFILL_MAX_FILINGS", 300),
             "currency_hint": "USD" if market == "US" else "INR",
         }
     )
@@ -306,19 +308,32 @@ def sync_insider():
 
     try:
         if market == "US":
-            days = _as_int(str(body.get("days", request.args.get("days", 7))), 7)
+            mode = str(body.get("mode", request.args.get("mode", "recent"))).strip().lower()
+            if mode not in {"recent", "backfill"}:
+                mode = "recent"
+
+            if mode == "backfill":
+                default_days = current_app.config.get("US_BACKFILL_DAYS", 30)
+                default_max = current_app.config.get("US_BACKFILL_MAX_FILINGS", 300)
+                max_cap = 500
+            else:
+                default_days = current_app.config.get("US_SYNC_DAYS", 7)
+                default_max = current_app.config["SYNC_MAX_FILINGS"]
+                max_cap = 100
+
+            days = _as_int(str(body.get("days", request.args.get("days", default_days))), default_days)
             max_filings = _as_int(
-                str(
-                    body.get(
-                        "max_filings",
-                        request.args.get("max_filings", current_app.config["SYNC_MAX_FILINGS"]),
-                    )
-                ),
-                current_app.config["SYNC_MAX_FILINGS"],
+                str(body.get("max_filings", request.args.get("max_filings", default_max))),
+                default_max,
             )
             days = max(1, min(days, 30))
-            max_filings = max(1, min(max_filings, 100))
-            result = sync_us_insider_feed(days=days, max_filings=max_filings, trigger="manual")
+            max_filings = max(1, min(max_filings, max_cap))
+            result = sync_us_insider_feed(
+                days=days,
+                max_filings=max_filings,
+                trigger="manual",
+                mode=mode,
+            )
             return jsonify(result)
         if market == "IN":
             days = _as_int(str(body.get("days", request.args.get("days", current_app.config.get("IN_SYNC_DAYS", 120)))), 120)
