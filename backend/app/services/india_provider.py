@@ -56,6 +56,7 @@ class NseClient:
             return
         self.session.cookies.clear()
         pages = [
+            f"{self.BASE}/option-chain",
             f"{self.BASE}/companies-listing/corporate-filings-insider-trading",
             f"{self.BASE}/companies-listing/corporate-filings-regulation-29",
             f"{self.BASE}/market-data/live-equity-market",
@@ -86,6 +87,8 @@ class NseClient:
             self.session.headers["Referer"] = (
                 f"{self.BASE}/get-quotes/equity?symbol={(params or {}).get('symbol', '')}"
             )
+        elif "option-chain" in url:
+            self.session.headers["Referer"] = f"{self.BASE}/option-chain"
         else:
             self.session.headers["Referer"] = (
                 f"{self.BASE}/companies-listing/corporate-filings-insider-trading"

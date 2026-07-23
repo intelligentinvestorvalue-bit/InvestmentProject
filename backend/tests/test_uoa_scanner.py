@@ -1,6 +1,11 @@
 """Unit tests for unusual options scoring helpers (no network)."""
 
-from app.services.uoa_scanner import classify_aggressiveness, classify_sentiment, score_contract
+from app.services.uoa_scanner import (
+    classify_aggressiveness,
+    classify_sentiment,
+    india_lot_size,
+    score_contract,
+)
 
 
 def test_classify_aggressiveness_near_ask():
@@ -39,3 +44,9 @@ def test_score_contract_ranks_high_vol_oi_and_premium():
     loud = score_contract(volume=5000, open_interest=200, premium=2_000_000, vol_oi=25.0, dte=21)
     assert loud > quiet
     assert quiet > 0
+
+
+def test_india_lot_size_known_and_fallback():
+    assert india_lot_size("NIFTY") == 65
+    assert india_lot_size("RELIANCE") >= 1
+    assert india_lot_size("UNKNOWNXYZ") == 1

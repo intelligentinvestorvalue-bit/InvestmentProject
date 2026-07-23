@@ -31,21 +31,20 @@ def _as_bool(value, default: bool = False) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _market_from_request() -> str:
+    body = request.get_json(silent=True) or {}
+    market = (request.args.get("market") or body.get("market") or "US").upper()
+    if market not in {"US", "IN"}:
+        return "US"
+    return market
+
+
 @options_bp.get("/options/unusual")
 def get_unusual_options():
-    market = (request.args.get("market") or "US").upper()
-    if market != "US":
-        return jsonify(
-            {
-                "market": market,
-                "status": "planned",
-                "message": "Unusual options scanning is US-first (Yahoo chains). India F&O comes later.",
-                "total": 0,
-                "items": [],
-            }
-        )
+    market = _market_from_request()
     return jsonify(
         list_uoa_alerts(
+            market=market,
             sentiment=request.args.get("sentiment"),
             underlying=request.args.get("underlying") or request.args.get("ticker"),
             universe=request.args.get("universe"),
@@ -58,10 +57,7 @@ def get_unusual_options():
 
 @options_bp.post("/options/unusual/scan")
 def scan_unusual_options():
-    market = (request.args.get("market") or (request.json or {}).get("market") or "US").upper()
-    if market != "US":
-        return jsonify({"error": "UOA scan currently supports market=US only"}), 400
-
+    market = _market_from_request()
     body = request.get_json(silent=True) or {}
     include_watchlist = _as_bool(body.get("include_watchlist", True), True)
     include_liquid = _as_bool(body.get("include_liquid", True), True)
@@ -71,6 +67,7 @@ def scan_unusual_options():
         max_tickers_i = max(1, _as_int(max_tickers, 20))
     try:
         result = run_uoa_scan(
+            market=market,
             include_watchlist=include_watchlist,
             include_liquid=include_liquid,
             trigger="manual",
@@ -83,26 +80,48 @@ def scan_unusual_options():
 
 @options_bp.get("/options/unusual/meta")
 def unusual_meta():
+    market = _market_from_request()
+    if market == "IN":
+        source = "NSE option-chain-v3 (F&O equities + indices)"
+        thresholds = {
+            "min_volume": current_app.config.get("UOA_IN_MIN_VOLUME"),
+            "min_vol_oi": current_app.config.get("UOA_IN_MIN_VOL_OI"),
+            "min_premium": current_app.config.get("UOA_IN_MIN_PREMIUM"),
+            "max_dte": current_app.config.get("UOA_IN_MAX_DTE", current_app.config.get("UOA_MAX_DTE")),
+            "notify_min_score": current_app.config.get(
+                "UOA_IN_NOTIFY_MIN_SCORE", current_app.config.get("UOA_NOTIFY_MIN_SCORE")
+            ),
+        }
+        timing = {
+            "near_realtime_minutes": current_app.config.get("UOA_IN_POLL_INTERVAL_MINUTES"),
+            "eod_hour_utc": current_app.config.get("UOA_IN_EOD_HOUR_UTC"),
+        }
+    else:
+        source = "Yahoo Finance via yfinance (delayed chains)"
+        thresholds = {
+            "min_volume": current_app.config.get("UOA_MIN_VOLUME"),
+            "min_vol_oi": current_app.config.get("UOA_MIN_VOL_OI"),
+            "min_premium": current_app.config.get("UOA_MIN_PREMIUM"),
+            "max_dte": current_app.config.get("UOA_MAX_DTE"),
+            "notify_min_score": current_app.config.get("UOA_NOTIFY_MIN_SCORE"),
+        }
+        timing = {
+            "near_realtime_minutes": current_app.config.get("UOA_POLL_INTERVAL_MINUTES"),
+            "eod_hour_utc": current_app.config.get("UOA_EOD_HOUR_UTC"),
+        }
+
     return jsonify(
         {
-            "market": "US",
-            "source": "Yahoo Finance via yfinance (delayed chains)",
+            "market": market,
+            "source": source,
             "sentiments": ["bullish", "bearish", "mixed", "unclear"],
             "universes": ["watchlist", "liquid100"],
-            "thresholds": {
-                "min_volume": current_app.config.get("UOA_MIN_VOLUME"),
-                "min_vol_oi": current_app.config.get("UOA_MIN_VOL_OI"),
-                "min_premium": current_app.config.get("UOA_MIN_PREMIUM"),
-                "max_dte": current_app.config.get("UOA_MAX_DTE"),
-                "notify_min_score": current_app.config.get("UOA_NOTIFY_MIN_SCORE"),
-            },
+            "thresholds": thresholds,
             "direction_model": [
                 "Calls lean bullish; puts lean bearish",
                 "Last near ask ≈ aggressive buy; near bid ≈ aggressive sell/hedge (mixed)",
             ],
-            "timing": {
-                "near_realtime_minutes": current_app.config.get("UOA_POLL_INTERVAL_MINUTES"),
-                "eod_hour_utc": current_app.config.get("UOA_EOD_HOUR_UTC"),
-            },
+            "timing": timing,
+            "currency": "INR" if market == "IN" else "USD",
         }
     )

@@ -44,7 +44,7 @@ def _run_in_sync(app: Flask) -> None:
 
 
 def _run_uoa_poll(app: Flask) -> None:
-    """Near-real-time-ish delayed scan over watchlist + a capped liquid set."""
+    """Near-real-time-ish delayed US scan over watchlist + a capped liquid set."""
     with app.app_context():
         if not app.config.get("UOA_ENABLED", True):
             return
@@ -52,18 +52,19 @@ def _run_uoa_poll(app: Flask) -> None:
 
         try:
             result = run_uoa_scan(
+                market="US",
                 include_watchlist=True,
                 include_liquid=True,
                 trigger="poll",
                 max_tickers=int(app.config.get("UOA_POLL_MAX_TICKERS", 25)),
             )
-            logger.info("UOA poll completed: %s", result)
+            logger.info("US UOA poll completed: %s", result)
         except Exception:  # noqa: BLE001
-            logger.exception("UOA poll failed")
+            logger.exception("US UOA poll failed")
 
 
 def _run_uoa_eod(app: Flask) -> None:
-    """Broader end-of-day / delayed full-ish scan."""
+    """Broader US end-of-day / delayed full-ish scan."""
     with app.app_context():
         if not app.config.get("UOA_ENABLED", True):
             return
@@ -71,14 +72,55 @@ def _run_uoa_eod(app: Flask) -> None:
 
         try:
             result = run_uoa_scan(
+                market="US",
                 include_watchlist=True,
                 include_liquid=True,
                 trigger="eod",
                 max_tickers=int(app.config.get("UOA_EOD_MAX_TICKERS", 80)),
             )
-            logger.info("UOA EOD completed: %s", result)
+            logger.info("US UOA EOD completed: %s", result)
         except Exception:  # noqa: BLE001
-            logger.exception("UOA EOD failed")
+            logger.exception("US UOA EOD failed")
+
+
+def _run_uoa_in_poll(app: Flask) -> None:
+    """Near-real-time-ish NSE F&O scan over watchlist + capped liquid set."""
+    with app.app_context():
+        if not app.config.get("UOA_ENABLED", True) or not app.config.get("UOA_IN_ENABLED", True):
+            return
+        from app.services.uoa_scanner import run_uoa_scan
+
+        try:
+            result = run_uoa_scan(
+                market="IN",
+                include_watchlist=True,
+                include_liquid=True,
+                trigger="poll",
+                max_tickers=int(app.config.get("UOA_IN_POLL_MAX_TICKERS", 20)),
+            )
+            logger.info("India UOA poll completed: %s", result)
+        except Exception:  # noqa: BLE001
+            logger.exception("India UOA poll failed")
+
+
+def _run_uoa_in_eod(app: Flask) -> None:
+    """Broader India F&O end-of-day scan after NSE close."""
+    with app.app_context():
+        if not app.config.get("UOA_ENABLED", True) or not app.config.get("UOA_IN_ENABLED", True):
+            return
+        from app.services.uoa_scanner import run_uoa_scan
+
+        try:
+            result = run_uoa_scan(
+                market="IN",
+                include_watchlist=True,
+                include_liquid=True,
+                trigger="eod",
+                max_tickers=int(app.config.get("UOA_IN_EOD_MAX_TICKERS", 60)),
+            )
+            logger.info("India UOA EOD completed: %s", result)
+        except Exception:  # noqa: BLE001
+            logger.exception("India UOA EOD failed")
 
 
 def init_scheduler(app: Flask) -> Optional[BackgroundScheduler]:
@@ -102,6 +144,8 @@ def init_scheduler(app: Flask) -> Optional[BackgroundScheduler]:
     in_minutes = int(app.config.get("IN_SYNC_INTERVAL_MINUTES", 90))
     uoa_poll_minutes = int(app.config.get("UOA_POLL_INTERVAL_MINUTES", 20))
     uoa_eod_hour = int(app.config.get("UOA_EOD_HOUR_UTC", 21))
+    uoa_in_poll_minutes = int(app.config.get("UOA_IN_POLL_INTERVAL_MINUTES", 25))
+    uoa_in_eod_hour = int(app.config.get("UOA_IN_EOD_HOUR_UTC", 10))
 
     scheduler.add_job(
         _run_us_sync,
@@ -145,14 +189,38 @@ def init_scheduler(app: Flask) -> Optional[BackgroundScheduler]:
             max_instances=1,
             coalesce=True,
         )
+        if app.config.get("UOA_IN_ENABLED", True):
+            scheduler.add_job(
+                _run_uoa_in_poll,
+                "interval",
+                minutes=max(uoa_in_poll_minutes, 15),
+                args=[app],
+                id="uoa_in_poll",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
+            scheduler.add_job(
+                _run_uoa_in_eod,
+                "cron",
+                hour=max(0, min(uoa_in_eod_hour, 23)),
+                minute=15,
+                args=[app],
+                id="uoa_in_eod",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
     scheduler.start()
     _scheduler = scheduler
     logger.info(
-        "Scheduler started (US %sm, IN %sm, UOA poll %sm, UOA EOD %s:10 UTC)",
+        "Scheduler started (US %sm, IN %sm, US UOA poll %sm / EOD %s:10 UTC, IN UOA poll %sm / EOD %s:15 UTC)",
         max(us_minutes, 15),
         max(in_minutes, 30),
         max(uoa_poll_minutes, 10),
         max(0, min(uoa_eod_hour, 23)),
+        max(uoa_in_poll_minutes, 15),
+        max(0, min(uoa_in_eod_hour, 23)),
     )
     return scheduler
 
