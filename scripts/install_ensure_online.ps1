@@ -1,13 +1,13 @@
-# Install keep-alive: every N minutes ensure FilingDesk + tunnel are up,
-# and push a new trycloudflare URL to your phone via ntfy (when it changes).
+# Install keep-alive: at logon + every N minutes ensure FilingDesk API + UI are up.
+# Tunnel is skipped by default (-SkipTunnel) so keep-alive succeeds while logged in.
 #
 # Usage:
 #   .\scripts\install_ensure_online.ps1
-#   .\scripts\install_ensure_online.ps1 -Minutes 30
+#   .\scripts\install_ensure_online.ps1 -Minutes 15
 #   .\scripts\install_ensure_online.ps1 -Uninstall
 
 param(
-  [int]$Minutes = 30,
+  [int]$Minutes = 15,
   [switch]$Uninstall
 )
 
@@ -33,7 +33,7 @@ if ($Minutes -lt 2) {
 
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
-$arg = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$WatchScript`""
+$arg = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$WatchScript`" -SkipTunnel"
 $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument $arg -WorkingDirectory $Root
 
 $start = (Get-Date).AddMinutes(1)
@@ -59,21 +59,16 @@ Register-ScheduledTask `
   -Trigger @($atLogon, $repeat) `
   -Settings $settings `
   -Principal $principal `
-  -Description "FilingDesk: keep API + UI + Cloudflare tunnel up; ntfy push when URL changes. Log: data\ensure_online.log" `
+  -Description "FilingDesk: keep API (:5000) + UI (:5173) up while logged in. Log: data\ensure_online.log" `
   | Out-Null
 
 Write-Host "Installed scheduled task: $TaskName"
 Write-Host "  At logon + every $Minutes minutes while logged in."
-Write-Host "  Runs in the background via Task Scheduler - Cursor/IDE does NOT need to be open."
+Write-Host "  Keep-alive only (tunnel skipped). Cursor/IDE does NOT need to be open."
 Write-Host "  Log: $Root\data\ensure_online.log"
+Write-Host "  Local UI: http://127.0.0.1:5173"
 Write-Host ""
-Write-Host "Checklist:"
-Write-Host "  - backend\.env has NTFY_TOPIC set (see CLOUDFLARE_TUNNEL.md)"
-Write-Host "  - Phone: install ntfy by Philipp C. Heckel and subscribe to that topic"
-Write-Host "  - Power: never sleep when plugged in"
-Write-Host "  - Test:  .\scripts\ensure_online.ps1"
-Write-Host "  - Force: .\scripts\ensure_online.ps1 -NotifyAlways"
+Write-Host "Test now:"
+Write-Host "  .\scripts\ensure_online.ps1 -SkipTunnel"
 Write-Host "Remove later:"
 Write-Host "  .\scripts\install_ensure_online.ps1 -Uninstall"
-Write-Host ""
-Write-Host "Docs: CLOUDFLARE_TUNNEL.md"

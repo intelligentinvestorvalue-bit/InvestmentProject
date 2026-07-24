@@ -1,13 +1,15 @@
-# Keep FilingDesk (API + UI) + Cloudflare tunnel online; ntfy push when URL changes.
+# Keep FilingDesk (API + UI) online while logged in. Cloudflare tunnel is optional.
 #
 # Usage:
 #   .\scripts\ensure_online.ps1
+#   .\scripts\ensure_online.ps1 -SkipTunnel          # app keep-alive only (default for Task Scheduler)
 #   .\scripts\ensure_online.ps1 -NotifyAlways
 #
 # Schedule: .\scripts\install_ensure_online.ps1
 
 param(
-  [switch]$NotifyAlways
+  [switch]$NotifyAlways,
+  [switch]$SkipTunnel
 )
 
 $ErrorActionPreference = "Continue"
@@ -202,13 +204,27 @@ function Send-Ntfy([string]$Url) {
 
 Import-DotEnv
 
-Write-EnsureLog "ensure_online check (api $ApiPort / ui $UiPort)"
+# Prefer -SkipTunnel, else .env ENSURE_SKIP_TUNNEL=1|true|yes (default: skip tunnel for keep-alive)
+if (-not $SkipTunnel) {
+  $skipEnv = ($env:ENSURE_SKIP_TUNNEL -as [string])
+  if ([string]::IsNullOrWhiteSpace($skipEnv) -or ($skipEnv -match '^(1|true|yes)$')) {
+    $SkipTunnel = $true
+  }
+}
+
+Write-EnsureLog "ensure_online check (api $ApiPort / ui $UiPort; skip_tunnel=$SkipTunnel)"
+
+$apiOk = $false
+$uiOk = $false
 
 if (Test-UrlOk "http://127.0.0.1:${ApiPort}/api/health") {
   Write-EnsureLog "API OK"
+  $apiOk = $true
 } else {
   Write-EnsureLog "API down - starting"
-  if (-not (Start-Backend)) {
+  if (Start-Backend) {
+    $apiOk = $true
+  } else {
     Write-EnsureLog "ABORT: could not start API"
     exit 1
   }
@@ -216,33 +232,44 @@ if (Test-UrlOk "http://127.0.0.1:${ApiPort}/api/health") {
 
 if (Test-UrlOk "http://127.0.0.1:${UiPort}/") {
   Write-EnsureLog "UI OK"
+  $uiOk = $true
 } else {
   Write-EnsureLog "UI down - starting"
-  if (-not (Start-Frontend)) {
+  if (Start-Frontend) {
+    $uiOk = $true
+  } else {
     Write-EnsureLog "ABORT: could not start UI"
     exit 1
   }
 }
 
+if ($SkipTunnel) {
+  Write-EnsureLog "Tunnel skipped (app keep-alive only). Local UI: http://127.0.0.1:${UiPort}"
+  if ($apiOk -and $uiOk) { exit 0 }
+  exit 1
+}
+
+# Tunnel is best-effort: never fail the job if local apps are healthy.
 if ((Test-TunnelAlive) -and (Test-Path $UrlFile)) {
   Write-EnsureLog ("Tunnel OK: {0}" -f (Get-Content $UrlFile -Raw).Trim())
 } else {
-  Write-EnsureLog "Tunnel down or missing URL - starting"
+  Write-EnsureLog "Tunnel down or missing URL - starting (best-effort)"
   & "$Root\scripts\run_tunnel.ps1"
   if ($LASTEXITCODE -ne 0) {
-    Write-EnsureLog "ERROR: run_tunnel.ps1 failed (exit $LASTEXITCODE)"
+    Write-EnsureLog "WARN: tunnel failed (exit $LASTEXITCODE) - local apps remain up"
+    if ($apiOk -and $uiOk) { exit 0 }
     exit 1
   }
 }
 
 if (-not (Test-Path $UrlFile)) {
-  Write-EnsureLog "WARN: no tunnel URL file yet"
+  Write-EnsureLog "WARN: no tunnel URL file yet - local apps remain up"
   exit 0
 }
 
 $url = (Get-Content $UrlFile -Raw).Trim()
 if (-not $url) {
-  Write-EnsureLog "WARN: empty tunnel URL"
+  Write-EnsureLog "WARN: empty tunnel URL - local apps remain up"
   exit 0
 }
 
