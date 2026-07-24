@@ -48,6 +48,16 @@ Suggested first-run flow:
 4. **Explore → Enrich sector metadata**
 5. **US → Options → Scan sample** (Yahoo delayed UOA; in-app bell for alerts)
 
+### Remote access (Cloudflare + ntfy)
+
+Keep API + UI + tunnel up at Windows logon and every 30 minutes; push the public URL to your phone when it changes. Phone app: **ntfy by Philipp C. Heckel** only — see [CLOUDFLARE_TUNNEL.md](./CLOUDFLARE_TUNNEL.md).
+
+```powershell
+# backend\.env: NTFY_TOPIC=...
+.\scripts\install_ensure_online.ps1
+.\scripts\ensure_online.ps1 -NotifyAlways
+```
+
 ---
 
 ## API map
