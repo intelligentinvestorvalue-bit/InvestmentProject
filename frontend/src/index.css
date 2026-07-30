@@ -250,6 +250,52 @@ a {
   font-size: 0.72rem !important;
 }
 
+.deep-dive-banner {
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, #e8f3ef 0%, #f3f8f6 100%);
+  padding: 0.55rem 1.1rem 0.7rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.deep-dive-banner-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+}
+
+.deep-dive-banner-copy {
+  display: grid;
+  gap: 0.15rem;
+  min-width: min(100%, 18rem);
+  flex: 1;
+}
+
+.deep-dive-banner-copy strong {
+  font-size: 0.95rem;
+  color: var(--brand);
+}
+
+.deep-dive-banner-copy span {
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--ink);
+}
+
+.deep-dive-banner-actions {
+  display: flex;
+  gap: 0.45rem;
+  flex-shrink: 0;
+}
+
+.deep-dive-banner-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--sell);
+}
+
 .inline-note {
   margin: 0;
   padding: 0.7rem 1.1rem;

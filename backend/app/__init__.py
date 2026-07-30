@@ -32,6 +32,7 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     CORS(app, resources={r"/api/*": {"origins": "*"}})
     db.init_app(app)
 
+    from app.routes.deep_dive import deep_dive_bp
     from app.routes.explore import explore_bp
     from app.routes.financials import financials_bp
     from app.routes.health import health_bp
@@ -49,6 +50,7 @@ def create_app(config_class: type[Config] = Config) -> Flask:
     app.register_blueprint(watchlists_bp, url_prefix="/api/v1")
     app.register_blueprint(options_bp, url_prefix="/api/v1")
     app.register_blueprint(notifications_bp, url_prefix="/api/v1")
+    app.register_blueprint(deep_dive_bp, url_prefix="/api/v1")
 
     with app.app_context():
         db.create_all()

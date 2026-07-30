@@ -15,10 +15,14 @@ _scheduler: Optional[BackgroundScheduler] = None
 
 def _run_us_sync(app: Flask) -> None:
     with app.app_context():
+        from datetime import datetime, timezone
+
+        from app.services.deep_dive_bridge import run_post_sync_bridge
         from app.services.sec_form4 import sync_us_insider_feed
 
         days = int(app.config.get("US_SYNC_DAYS", 7))
         max_filings = int(app.config.get("US_SYNC_MAX_FILINGS", app.config.get("SYNC_MAX_FILINGS", 25)))
+        sync_started = datetime.now(timezone.utc)
         try:
             result = sync_us_insider_feed(
                 days=days,
@@ -27,8 +31,29 @@ def _run_us_sync(app: Flask) -> None:
                 mode="recent",
             )
             logger.info("Scheduled US sync completed: %s", result)
+            try:
+                bridge = run_post_sync_bridge(sync_started_at=sync_started)
+                logger.info("Deep-dive bridge after US sync: %s", bridge)
+            except Exception:  # noqa: BLE001
+                logger.exception("Deep-dive bridge after US sync failed")
         except Exception:  # noqa: BLE001
             logger.exception("Scheduled US sync failed")
+
+
+def _run_deep_dive_tick(app: Flask) -> None:
+    """Expire confirmation windows and revive due backlog items."""
+    with app.app_context():
+        if not app.config.get("DEEP_DIVE_BRIDGE_ENABLED", True):
+            return
+        from app.services.deep_dive_bridge import process_expired_pending, revive_backlog
+
+        try:
+            expired = process_expired_pending()
+            revived = revive_backlog()
+            if expired.get("due") or revived.get("revived"):
+                logger.info("Deep-dive tick: expired=%s revived=%s", expired, revived)
+        except Exception:  # noqa: BLE001
+            logger.exception("Deep-dive tick failed")
 
 
 def _run_in_sync(app: Flask) -> None:
@@ -157,6 +182,18 @@ def init_scheduler(app: Flask) -> Optional[BackgroundScheduler]:
         max_instances=1,
         coalesce=True,
     )
+    if app.config.get("DEEP_DIVE_BRIDGE_ENABLED", True):
+        tick_seconds = int(app.config.get("DEEP_DIVE_TICK_SECONDS", 10))
+        scheduler.add_job(
+            _run_deep_dive_tick,
+            "interval",
+            seconds=max(tick_seconds, 5),
+            args=[app],
+            id="deep_dive_tick",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
     scheduler.add_job(
         _run_in_sync,
         "interval",
@@ -214,13 +251,14 @@ def init_scheduler(app: Flask) -> Optional[BackgroundScheduler]:
     scheduler.start()
     _scheduler = scheduler
     logger.info(
-        "Scheduler started (US %sm, IN %sm, US UOA poll %sm / EOD %s:10 UTC, IN UOA poll %sm / EOD %s:15 UTC)",
+        "Scheduler started (US %sm, IN %sm, US UOA poll %sm / EOD %s:10 UTC, IN UOA poll %sm / EOD %s:15 UTC, deep-dive=%s)",
         max(us_minutes, 15),
         max(in_minutes, 30),
         max(uoa_poll_minutes, 10),
         max(0, min(uoa_eod_hour, 23)),
         max(uoa_in_poll_minutes, 15),
         max(0, min(uoa_in_eod_hour, 23)),
+        bool(app.config.get("DEEP_DIVE_BRIDGE_ENABLED", True)),
     )
     return scheduler
 

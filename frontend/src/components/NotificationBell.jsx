@@ -83,7 +83,13 @@ export default function NotificationBell() {
                   <strong>{note.title}</strong>
                   <span className="muted">{note.body}</span>
                   <span className="muted notify-meta">
-                    {note.kind}
+                    {note.kind === 'deep_dive_push'
+                      ? 'deep dive'
+                      : note.kind === 'deep_dive_pushed'
+                        ? 'deep dive started'
+                        : note.kind === 'deep_dive_cancelled'
+                          ? 'deep dive deferred'
+                          : note.kind}
                     {note.ticker ? ` · ${note.ticker}` : ''}
                     {note.created_at ? ` · ${formatDate(note.created_at)}` : ''}
                   </span>

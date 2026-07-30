@@ -162,3 +162,33 @@ export function markNotificationRead(id) {
 export function markAllNotificationsRead() {
   return request('/api/v1/notifications/read-all', { method: 'POST' })
 }
+
+export function fetchDeepDivePending() {
+  return request('/api/v1/deep-dive/pending')
+}
+
+export function fetchDeepDiveCandidates(params = {}) {
+  const qs = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      qs.set(key, value)
+    }
+  })
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  return request(`/api/v1/deep-dive/candidates${suffix}`)
+}
+
+export function cancelDeepDive(id) {
+  return request(`/api/v1/deep-dive/${id}/cancel`, { method: 'POST' })
+}
+
+export function confirmDeepDive(id) {
+  return request(`/api/v1/deep-dive/${id}/confirm`, { method: 'POST' })
+}
+
+export function scanDeepDive(payload = {}) {
+  return request('/api/v1/deep-dive/scan', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+}

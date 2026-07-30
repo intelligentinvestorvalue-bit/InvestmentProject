@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom'
+import DeepDiveConfirmBanner from './DeepDiveConfirmBanner'
 import NotificationBell from './NotificationBell'
 
 export default function TopBar({ market, onMarketChange }) {
@@ -39,6 +40,8 @@ export default function TopBar({ market, onMarketChange }) {
           </div>
         </div>
       </header>
+
+      <DeepDiveConfirmBanner />
 
       <nav className="nav-row" aria-label="Primary">
         <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : undefined)}>

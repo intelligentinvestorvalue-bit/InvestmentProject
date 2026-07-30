@@ -12,7 +12,8 @@ Personal research desk for **US and India** markets.
 | Sector explore | SIC-based sectors from SEC submissions | Yahoo sector/industry metadata |
 | Watchlists | Saved ticker screens | Saved ticker screens |
 | Unusual options (UOA) | Yahoo delayed chains: watchlist + liquid universe, call/put + bid/ask direction, in-app alerts | NSE F&O option-chain-v3: indices + equity FO, same direction model, in-app alerts |
-| Scheduled sync | Auto Form 4 refresh + UOA poll/EOD | Auto PIT + pledge/SAST refresh + India UOA poll/EOD |
+| Officer buy → deep dive | Auto-detect ≥$500k CEO/CFO/management buys → confirm banner → Equity Research Agent full pack | — |
+| Scheduled sync | Auto Form 4 refresh + UOA poll/EOD + deep-dive confirm tick | Auto PIT + pledge/SAST refresh + India UOA poll/EOD |
 
 Legacy notes from earlier experiments live in `docs/legacy/`.
 
@@ -59,6 +60,18 @@ Keep API + UI + tunnel up at Windows logon and every 30 minutes; push the public
 .\scripts\ensure_online.ps1 -NotifyAlways
 ```
 
+### Officer buy → Equity Research deep dive
+
+With both apps running locally (FilingDesk `:5000` / UI `:5173`, Equity Research Agent `:8000`):
+
+1. Hourly US Form 4 sync finds open-market **officer / C-suite buys ≥ $500k**.
+2. FilingDesk stages a confirmation (top banner + notification bell + optional ntfy).
+3. **~60s** to cancel → item goes to **backlog** and is offered again next hour.
+4. No cancel (or **Push now**) → `POST http://127.0.0.1:8000/api/research` with `template=all` (full pack).
+5. Same ticker is not re-pushed for **72h** (cooldown). Research agent down → backlog retry.
+
+Config keys: `DEEP_DIVE_*` in `backend/.env.example`.
+
 ---
 
 ## API map
@@ -85,6 +98,12 @@ Keep API + UI + tunnel up at Windows logon and every 30 minutes; push the public
 | `GET` | `/api/v1/notifications` | In-app notifications |
 | `POST` | `/api/v1/notifications/<id>/read` | Mark one notification read |
 | `POST` | `/api/v1/notifications/read-all` | Mark all notifications read |
+| `GET` | `/api/v1/deep-dive/pending` | Pending auto-push confirmations + backlog count |
+| `GET` | `/api/v1/deep-dive/candidates` | Deep-dive candidate history (`status=` filter) |
+| `POST` | `/api/v1/deep-dive/<id>/cancel` | Cancel → backlog (retry ~1h) |
+| `POST` | `/api/v1/deep-dive/<id>/confirm` | Push now to Equity Research Agent |
+| `POST` | `/api/v1/deep-dive/scan` | Re-scan cached insider buys for signals |
+| `POST` | `/api/v1/deep-dive/tick` | Process expired confirm windows |
 
 ---
 

@@ -328,12 +328,24 @@ def sync_insider():
             )
             days = max(1, min(days, 30))
             max_filings = max(1, min(max_filings, max_cap))
+            from datetime import datetime, timezone
+
+            sync_started = datetime.now(timezone.utc)
             result = sync_us_insider_feed(
                 days=days,
                 max_filings=max_filings,
                 trigger="manual",
                 mode=mode,
             )
+            # Only auto-stage deep dives for incremental "recent" syncs —
+            # backfill would flood the research queue with historical buys.
+            if mode == "recent" and current_app.config.get("DEEP_DIVE_BRIDGE_ENABLED", True):
+                try:
+                    from app.services.deep_dive_bridge import run_post_sync_bridge
+
+                    result["deep_dive"] = run_post_sync_bridge(sync_started_at=sync_started)
+                except Exception as bridge_exc:  # noqa: BLE001
+                    result["deep_dive_error"] = str(bridge_exc)
             return jsonify(result)
         if market == "IN":
             days = _as_int(str(body.get("days", request.args.get("days", current_app.config.get("IN_SYNC_DAYS", 120)))), 120)

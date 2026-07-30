@@ -391,6 +391,66 @@ class AppNotification(db.Model):
         }
 
 
+class DeepDiveCandidate(db.Model):
+    """Officer buy signal staged for Equity Research Agent deep-dive push."""
+
+    __tablename__ = "deep_dive_candidates"
+    __table_args__ = (
+        db.Index("ix_deep_dive_status_deadline", "status", "confirm_deadline_at"),
+        db.Index("ix_deep_dive_ticker_status", "ticker", "status"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    market = db.Column(db.String(8), nullable=False, default="US", index=True)
+    ticker = db.Column(db.String(32), nullable=False, index=True)
+    company_name = db.Column(db.String(255), nullable=True)
+    insider_name = db.Column(db.String(255), nullable=True)
+    officer_title = db.Column(db.String(255), nullable=True)
+    total_value = db.Column(db.Float, nullable=True)
+    transaction_ids_json = db.Column(db.Text, nullable=True)
+    accession_number = db.Column(db.String(64), nullable=True)
+    source_url = db.Column(db.String(512), nullable=True)
+
+    # pending_confirm | backlog | pushed | failed | skipped | cancelled_final
+    status = db.Column(db.String(32), nullable=False, default="pending_confirm", index=True)
+    confirm_deadline_at = db.Column(db.DateTime, nullable=True, index=True)
+    retry_after = db.Column(db.DateTime, nullable=True, index=True)
+    research_job_id = db.Column(db.String(64), nullable=True)
+    notification_id = db.Column(db.Integer, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    cancel_count = db.Column(db.Integer, nullable=False, default=0)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=utcnow, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)
+    pushed_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "market": self.market,
+            "ticker": self.ticker,
+            "company_name": self.company_name,
+            "insider_name": self.insider_name,
+            "officer_title": self.officer_title,
+            "total_value": self.total_value,
+            "transaction_ids_json": self.transaction_ids_json,
+            "accession_number": self.accession_number,
+            "source_url": self.source_url,
+            "status": self.status,
+            "confirm_deadline_at": self.confirm_deadline_at.isoformat()
+            if self.confirm_deadline_at
+            else None,
+            "retry_after": self.retry_after.isoformat() if self.retry_after else None,
+            "research_job_id": self.research_job_id,
+            "notification_id": self.notification_id,
+            "error_message": self.error_message,
+            "cancel_count": self.cancel_count,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+            "pushed_at": self.pushed_at.isoformat() if self.pushed_at else None,
+        }
+
+
 class OptionsScanRun(db.Model):
     """Tracks unusual options scan attempts."""
 

@@ -68,3 +68,21 @@ class Config:
     UOA_IN_TICKER_SLEEP_SECONDS = float(os.getenv("UOA_IN_TICKER_SLEEP_SECONDS", "0.6"))
     UOA_IN_POLL_MAX_TICKERS = int(os.getenv("UOA_IN_POLL_MAX_TICKERS", "20"))
     UOA_IN_EOD_MAX_TICKERS = int(os.getenv("UOA_IN_EOD_MAX_TICKERS", "60"))
+
+    # Large officer buys → Equity Research Agent full deep-dive pack
+    DEEP_DIVE_BRIDGE_ENABLED = _as_bool(os.getenv("DEEP_DIVE_BRIDGE_ENABLED"), True)
+    DEEP_DIVE_MIN_VALUE_USD = float(os.getenv("DEEP_DIVE_MIN_VALUE_USD", "500000"))
+    DEEP_DIVE_CONFIRM_SECONDS = int(os.getenv("DEEP_DIVE_CONFIRM_SECONDS", "60"))
+    DEEP_DIVE_COOLDOWN_HOURS = int(os.getenv("DEEP_DIVE_COOLDOWN_HOURS", "72"))
+    DEEP_DIVE_BACKLOG_RETRY_MINUTES = int(os.getenv("DEEP_DIVE_BACKLOG_RETRY_MINUTES", "60"))
+    DEEP_DIVE_TICK_SECONDS = int(os.getenv("DEEP_DIVE_TICK_SECONDS", "10"))
+    DEEP_DIVE_RESEARCH_URL = os.getenv("DEEP_DIVE_RESEARCH_URL", "http://127.0.0.1:8000")
+    DEEP_DIVE_RESEARCH_PIN = os.getenv("DEEP_DIVE_RESEARCH_PIN", "")
+    DEEP_DIVE_RESEARCH_TEMPLATE = os.getenv("DEEP_DIVE_RESEARCH_TEMPLATE", "all")
+    DEEP_DIVE_RESEARCH_MODE = os.getenv("DEEP_DIVE_RESEARCH_MODE", "deep")
+    DEEP_DIVE_NTFY_ENABLED = _as_bool(os.getenv("DEEP_DIVE_NTFY_ENABLED"), True)
+    # Comma-separated officer title tokens (matched case-insensitively as substrings)
+    DEEP_DIVE_OFFICER_TITLE_KEYWORDS = os.getenv(
+        "DEEP_DIVE_OFFICER_TITLE_KEYWORDS",
+        "ceo,cfo,coo,cto,chief,president,managing director,general counsel,controller,treasurer",
+    )
