@@ -241,7 +241,55 @@ export default function OptionsPage({ market }) {
         {!loading && (data.items || []).length > 0 ? (
           <>
             <div className="table-wrap">
-              <table>
+              <ul className="feed-cards">
+                {data.items.map((row) => (
+                  <li key={`card-${row.id}-${row.contract_symbol}`} className="feed-card">
+                    <div className="feed-card-top">
+                      <div>
+                        <strong className="mono">{row.underlying}</strong>
+                        <span className="muted feed-card-sub mono">{row.contract_symbol}</span>
+                      </div>
+                      <span className={`side-pill ${row.option_type === 'call' ? 'buy' : 'sell'}`}>
+                        {row.option_type}
+                      </span>
+                    </div>
+                    <div className="feed-card-metrics">
+                      <div>
+                        <span className="muted">Score</span>
+                        <strong className="mono">{formatNumber(row.score)}</strong>
+                      </div>
+                      <div>
+                        <span className="muted">Premium</span>
+                        <strong className="mono">{formatMoney(row.premium, 'USD')}</strong>
+                      </div>
+                      <div>
+                        <span className="muted">Strike</span>
+                        <strong className="mono">{formatNumber(row.strike)}</strong>
+                      </div>
+                      <div>
+                        <span className="muted">Exp</span>
+                        <strong className="mono">
+                          {formatDate(row.expiration)} · {row.dte}d
+                        </strong>
+                      </div>
+                    </div>
+                    <div className="feed-card-body">
+                      <span
+                        className={`side-pill ${
+                          row.sentiment === 'bullish' ? 'buy' : row.sentiment === 'bearish' ? 'sell' : ''
+                        }`}
+                      >
+                        {row.sentiment || '—'}
+                      </span>
+                      <span className="muted">
+                        Vol/OI {formatNumber(row.vol_oi)} · {row.aggressiveness || 'unknown'}
+                        {row.reason ? ` · ${row.reason}` : ''}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              <table className="desktop-table">
                 <thead>
                   <tr>
                     <th>Underlying</th>

@@ -143,10 +143,10 @@ function Start-Frontend {
 
   Stop-PidFile $FrontendPidFile "frontend"
   Remove-Item -Force -ErrorAction SilentlyContinue $FrontendOut, $FrontendErr
-  Write-EnsureLog "Starting FilingDesk UI on port $UiPort"
+  Write-EnsureLog "Starting FilingDesk UI on 0.0.0.0:$UiPort (LAN + localhost)"
 
   $proc = Start-Process -FilePath $npm.Source `
-    -ArgumentList @("run", "dev", "--", "--host", "127.0.0.1", "--port", "$UiPort") `
+    -ArgumentList @("run", "dev", "--", "--host", "0.0.0.0", "--port", "$UiPort") `
     -WorkingDirectory (Join-Path $Root "frontend") `
     -RedirectStandardOutput $FrontendOut `
     -RedirectStandardError $FrontendErr `
@@ -244,7 +244,16 @@ if (Test-UrlOk "http://127.0.0.1:${UiPort}/") {
 }
 
 if ($SkipTunnel) {
+  $lan = $null
+  try {
+    $lan = (Get-NetIPAddress -AddressFamily IPv4 |
+      Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' -and $_.PrefixOrigin -ne 'WellKnown' } |
+      Select-Object -First 1 -ExpandProperty IPAddress)
+  } catch { }
   Write-EnsureLog "Tunnel skipped (app keep-alive only). Local UI: http://127.0.0.1:${UiPort}"
+  if ($lan) {
+    Write-EnsureLog "Phone (same Wi-Fi): http://${lan}:${UiPort}"
+  }
   if ($apiOk -and $uiOk) { exit 0 }
   exit 1
 }

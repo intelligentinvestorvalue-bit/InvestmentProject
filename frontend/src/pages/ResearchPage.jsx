@@ -136,9 +136,9 @@ export default function ResearchPage({ market }) {
               ))}
             </div>
 
-            <div className="table-wrap">
+            <div className="table-wrap table-wrap-sticky">
               {rows.length ? (
-                <table>
+                <table className="research-table">
                   <thead>
                     <tr>
                       <th>Metric</th>
