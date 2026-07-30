@@ -3,7 +3,7 @@ import NotificationBell from './NotificationBell'
 
 export default function TopBar({ market, onMarketChange }) {
   return (
-    <>
+    <div className="chrome">
       <header className="topbar">
         <div className="brand">
           <div className="brand-mark" aria-hidden>
@@ -11,7 +11,7 @@ export default function TopBar({ market, onMarketChange }) {
           </div>
           <div className="brand-copy">
             <strong>FilingDesk</strong>
-            <span>Cross-market insider research</span>
+            <span className="brand-tagline">Cross-market insider research</span>
           </div>
         </div>
 
@@ -42,7 +42,7 @@ export default function TopBar({ market, onMarketChange }) {
 
       <nav className="nav-row" aria-label="Primary">
         <NavLink to="/" end className={({ isActive }) => (isActive ? 'active' : undefined)}>
-          Insider feed
+          Insider
         </NavLink>
         <NavLink to="/watchlists" className={({ isActive }) => (isActive ? 'active' : undefined)}>
           Watchlists
@@ -57,6 +57,6 @@ export default function TopBar({ market, onMarketChange }) {
           Explore
         </NavLink>
       </nav>
-    </>
+    </div>
   )
 }

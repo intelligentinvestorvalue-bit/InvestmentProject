@@ -12,6 +12,13 @@ node_modules/
 dist/
 .DS_Store
 
+# Keep-alive / Cloudflare tunnel runtime
+data/*.pid
+data/tunnel*
+data/ensure_online.log
+data/backend.*.log
+data/frontend.*.log
+
 # Editors / tooling
 .idea/
 .vscode/
@@ -19,3 +26,10 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Keep-alive / Cloudflare tunnel runtime
+data/*.pid
+data/tunnel*
+data/ensure_online.log
+data/backend.*.log
+data/frontend.*.log

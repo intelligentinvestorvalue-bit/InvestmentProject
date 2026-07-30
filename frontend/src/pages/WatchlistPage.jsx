@@ -213,45 +213,86 @@ export default function WatchlistPage({ market }) {
 
                 <div className="table-wrap">
                   {detail.items?.length ? (
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Ticker</th>
-                          <th>Name</th>
-                          <th>Buys</th>
-                          <th>Sells</th>
-                          <th>Last tx</th>
-                          <th />
-                        </tr>
-                      </thead>
-                      <tbody>
+                    <>
+                      <ul className="feed-cards">
                         {detail.items.map((item) => (
-                          <tr key={item.id}>
-                            <td className="mono">
-                              <Link
-                                to="/research"
-                                onClick={() => sessionStorage.setItem('fd_ticker', item.ticker)}
-                              >
-                                {item.ticker}
-                              </Link>
-                            </td>
-                            <td>{item.company_name || '—'}</td>
-                            <td className="mono">{formatNumber(item.buy_count)}</td>
-                            <td className="mono">{formatNumber(item.sell_count)}</td>
-                            <td className="mono">{formatDate(item.last_tx_date)}</td>
-                            <td>
+                          <li key={`card-${item.id}`} className="feed-card">
+                            <div className="feed-card-top">
+                              <div>
+                                <Link
+                                  className="mono"
+                                  to="/research"
+                                  onClick={() => sessionStorage.setItem('fd_ticker', item.ticker)}
+                                >
+                                  <strong>{item.ticker}</strong>
+                                </Link>
+                                <span className="muted feed-card-sub">{item.company_name || '—'}</span>
+                              </div>
                               <button
-                                className="btn btn-ghost"
+                                className="btn btn-ghost btn-compact"
                                 type="button"
                                 onClick={() => onRemoveItem(item.id)}
                               >
                                 Remove
                               </button>
-                            </td>
-                          </tr>
+                            </div>
+                            <div className="feed-card-metrics">
+                              <div>
+                                <span className="muted">Buys</span>
+                                <strong className="mono">{formatNumber(item.buy_count)}</strong>
+                              </div>
+                              <div>
+                                <span className="muted">Sells</span>
+                                <strong className="mono">{formatNumber(item.sell_count)}</strong>
+                              </div>
+                              <div>
+                                <span className="muted">Last tx</span>
+                                <strong className="mono">{formatDate(item.last_tx_date)}</strong>
+                              </div>
+                            </div>
+                          </li>
                         ))}
-                      </tbody>
-                    </table>
+                      </ul>
+                      <table className="desktop-table">
+                        <thead>
+                          <tr>
+                            <th>Ticker</th>
+                            <th>Name</th>
+                            <th>Buys</th>
+                            <th>Sells</th>
+                            <th>Last tx</th>
+                            <th />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {detail.items.map((item) => (
+                            <tr key={item.id}>
+                              <td className="mono">
+                                <Link
+                                  to="/research"
+                                  onClick={() => sessionStorage.setItem('fd_ticker', item.ticker)}
+                                >
+                                  {item.ticker}
+                                </Link>
+                              </td>
+                              <td>{item.company_name || '—'}</td>
+                              <td className="mono">{formatNumber(item.buy_count)}</td>
+                              <td className="mono">{formatNumber(item.sell_count)}</td>
+                              <td className="mono">{formatDate(item.last_tx_date)}</td>
+                              <td>
+                                <button
+                                  className="btn btn-ghost"
+                                  type="button"
+                                  onClick={() => onRemoveItem(item.id)}
+                                >
+                                  Remove
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </>
                   ) : (
                     <div className="empty muted">Add tickers to start monitoring this screen.</div>
                   )}

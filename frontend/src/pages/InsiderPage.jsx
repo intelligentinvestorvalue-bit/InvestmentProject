@@ -269,13 +269,14 @@ export default function InsiderPage({ market }) {
         <form className="filters" onSubmit={applyFilters}>
           {showOpenMarket ? (
             <>
-              <div className="field">
+              <div className="field field-span">
                 <label htmlFor="q">Search</label>
                 <input
                   id="q"
                   value={filters.q}
                   onChange={(e) => updateFilter('q', e.target.value)}
                   placeholder="Ticker, company, insider"
+                  enterKeyHint="search"
                 />
               </div>
               <div className="field">
@@ -306,6 +307,8 @@ export default function InsiderPage({ market }) {
               value={filters.ticker}
               onChange={(e) => updateFilter('ticker', e.target.value.toUpperCase())}
               placeholder={market === 'US' ? 'AAPL' : 'RELIANCE'}
+              autoCapitalize="characters"
+              autoCorrect="off"
             />
             <datalist id="ticker-options">
               {(meta?.tickers || []).map((t) => (
@@ -314,58 +317,63 @@ export default function InsiderPage({ market }) {
             </datalist>
           </div>
           {showOpenMarket ? (
-            <>
-              <div className="field">
-                <label htmlFor="filing_date_from">Filing from</label>
-                <input
-                  id="filing_date_from"
-                  type="date"
-                  value={filters.filing_date_from}
-                  onChange={(e) => updateFilter('filing_date_from', e.target.value)}
-                />
+            <details className="filter-more">
+              <summary>More filters</summary>
+              <div className="filter-more-grid">
+                <div className="field">
+                  <label htmlFor="filing_date_from">Filing from</label>
+                  <input
+                    id="filing_date_from"
+                    type="date"
+                    value={filters.filing_date_from}
+                    onChange={(e) => updateFilter('filing_date_from', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="filing_date_to">Filing to</label>
+                  <input
+                    id="filing_date_to"
+                    type="date"
+                    value={filters.filing_date_to}
+                    onChange={(e) => updateFilter('filing_date_to', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="min_value">Min value</label>
+                  <input
+                    id="min_value"
+                    type="number"
+                    min="0"
+                    inputMode="decimal"
+                    value={filters.min_value}
+                    onChange={(e) => updateFilter('min_value', e.target.value)}
+                    placeholder={market === 'US' ? '100000' : ''}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="max_value">Max value</label>
+                  <input
+                    id="max_value"
+                    type="number"
+                    min="0"
+                    inputMode="decimal"
+                    value={filters.max_value}
+                    onChange={(e) => updateFilter('max_value', e.target.value)}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="sort">Sort</label>
+                  <select id="sort" value={filters.sort} onChange={(e) => updateFilter('sort', e.target.value)}>
+                    <option value="filing_date_desc">Filing date ↓</option>
+                    <option value="transaction_date_desc">Tx date ↓</option>
+                    <option value="value_desc">Value ↓</option>
+                    <option value="shares_desc">Shares ↓</option>
+                  </select>
+                </div>
               </div>
-              <div className="field">
-                <label htmlFor="filing_date_to">Filing to</label>
-                <input
-                  id="filing_date_to"
-                  type="date"
-                  value={filters.filing_date_to}
-                  onChange={(e) => updateFilter('filing_date_to', e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="min_value">Min value</label>
-                <input
-                  id="min_value"
-                  type="number"
-                  min="0"
-                  value={filters.min_value}
-                  onChange={(e) => updateFilter('min_value', e.target.value)}
-                  placeholder={market === 'US' ? '100000' : ''}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="max_value">Max value</label>
-                <input
-                  id="max_value"
-                  type="number"
-                  min="0"
-                  value={filters.max_value}
-                  onChange={(e) => updateFilter('max_value', e.target.value)}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="sort">Sort</label>
-                <select id="sort" value={filters.sort} onChange={(e) => updateFilter('sort', e.target.value)}>
-                  <option value="filing_date_desc">Filing date ↓</option>
-                  <option value="transaction_date_desc">Tx date ↓</option>
-                  <option value="value_desc">Value ↓</option>
-                  <option value="shares_desc">Shares ↓</option>
-                </select>
-              </div>
-            </>
+            </details>
           ) : null}
-          <div className="actions">
+          <div className="actions actions-stretch">
             <button className="btn btn-primary" type="submit">
               Apply filters
             </button>
@@ -382,91 +390,178 @@ export default function InsiderPage({ market }) {
             <div className="empty muted">Loading…</div>
           ) : data.items?.length ? (
             showOpenMarket ? (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Side</th>
-                    <th>Ticker</th>
-                    <th>Company</th>
-                    <th>Insider</th>
-                    <th>Role</th>
-                    {market === 'IN' ? <th>Exch</th> : null}
-                    <th>Tx date</th>
-                    <th>Filing</th>
-                    <th>Shares</th>
-                    <th>Price</th>
-                    <th>Value</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <ul className="feed-cards">
                   {data.items.map((row) => (
-                    <tr key={row.id}>
-                      <td>
+                    <li key={`card-${row.id}`} className="feed-card">
+                      <div className="feed-card-top">
+                        <div>
+                          <strong className="mono">{row.ticker || '—'}</strong>
+                          <span className="muted feed-card-sub">{row.company_name || '—'}</span>
+                        </div>
                         <span className={`side-pill ${row.transaction_side}`}>{row.transaction_side}</span>
-                      </td>
-                      <td className="mono">{row.ticker || '—'}</td>
-                      <td>{row.company_name || '—'}</td>
-                      <td>
+                      </div>
+                      <div className="feed-card-body">
                         {row.source_url ? (
                           <a href={row.source_url} target="_blank" rel="noreferrer">
                             {row.insider_name}
                           </a>
                         ) : (
-                          row.insider_name
+                          <span>{row.insider_name}</span>
                         )}
-                      </td>
-                      <td>{row.relationship || '—'}</td>
-                      {market === 'IN' ? <td className="mono">{row.exchange || '—'}</td> : null}
-                      <td className="mono">{formatDate(row.transaction_date)}</td>
-                      <td className="mono">{formatDate(row.filing_date)}</td>
-                      <td className="mono">{formatNumber(row.shares, 2)}</td>
-                      <td className="mono">{formatMoney(row.price_per_share, currency)}</td>
-                      <td className="mono">{formatMoney(row.total_value, currency)}</td>
-                    </tr>
+                        <span className="muted">{row.relationship || '—'}</span>
+                      </div>
+                      <div className="feed-card-metrics">
+                        <div>
+                          <span className="muted">Value</span>
+                          <strong className="mono">{formatMoney(row.total_value, currency)}</strong>
+                        </div>
+                        <div>
+                          <span className="muted">Shares</span>
+                          <strong className="mono">{formatNumber(row.shares, 2)}</strong>
+                        </div>
+                        <div>
+                          <span className="muted">Price</span>
+                          <strong className="mono">{formatMoney(row.price_per_share, currency)}</strong>
+                        </div>
+                        <div>
+                          <span className="muted">Filed</span>
+                          <strong className="mono">{formatDate(row.filing_date)}</strong>
+                        </div>
+                      </div>
+                    </li>
                   ))}
-                </tbody>
-              </table>
+                </ul>
+                <table className="desktop-table">
+                  <thead>
+                    <tr>
+                      <th>Side</th>
+                      <th>Ticker</th>
+                      <th>Company</th>
+                      <th>Insider</th>
+                      <th>Role</th>
+                      {market === 'IN' ? <th>Exch</th> : null}
+                      <th>Tx date</th>
+                      <th>Filing</th>
+                      <th>Shares</th>
+                      <th>Price</th>
+                      <th>Value</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.items.map((row) => (
+                      <tr key={row.id}>
+                        <td>
+                          <span className={`side-pill ${row.transaction_side}`}>{row.transaction_side}</span>
+                        </td>
+                        <td className="mono">{row.ticker || '—'}</td>
+                        <td>{row.company_name || '—'}</td>
+                        <td>
+                          {row.source_url ? (
+                            <a href={row.source_url} target="_blank" rel="noreferrer">
+                              {row.insider_name}
+                            </a>
+                          ) : (
+                            row.insider_name
+                          )}
+                        </td>
+                        <td>{row.relationship || '—'}</td>
+                        {market === 'IN' ? <td className="mono">{row.exchange || '—'}</td> : null}
+                        <td className="mono">{formatDate(row.transaction_date)}</td>
+                        <td className="mono">{formatDate(row.filing_date)}</td>
+                        <td className="mono">{formatNumber(row.shares, 2)}</td>
+                        <td className="mono">{formatMoney(row.price_per_share, currency)}</td>
+                        <td className="mono">{formatMoney(row.total_value, currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Kind</th>
-                    <th>Ticker</th>
-                    <th>Company</th>
-                    <th>Party</th>
-                    <th>Side</th>
-                    <th>Event</th>
-                    <th>Filing</th>
-                    <th>Shares</th>
-                    <th>%</th>
-                    <th>Details</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <>
+                <ul className="feed-cards">
                   {data.items.map((row) => (
-                    <tr key={row.id}>
-                      <td className="mono">{row.kind}</td>
-                      <td className="mono">{row.ticker || '—'}</td>
-                      <td>{row.company_name || '—'}</td>
-                      <td>
+                    <li key={`card-${row.id}`} className="feed-card">
+                      <div className="feed-card-top">
+                        <div>
+                          <strong className="mono">{row.ticker || '—'}</strong>
+                          <span className="muted feed-card-sub">{row.company_name || '—'}</span>
+                        </div>
+                        <span className="side-pill">{row.kind}</span>
+                      </div>
+                      <div className="feed-card-body">
                         {row.source_url ? (
                           <a href={row.source_url} target="_blank" rel="noreferrer">
                             {row.party_name || '—'}
                           </a>
                         ) : (
-                          row.party_name || '—'
+                          <span>{row.party_name || '—'}</span>
                         )}
-                      </td>
-                      <td>{row.side || '—'}</td>
-                      <td className="mono">{formatDate(row.event_date)}</td>
-                      <td className="mono">{formatDate(row.filing_date)}</td>
-                      <td className="mono">{formatNumber(row.shares, 2)}</td>
-                      <td className="mono">{formatNumber(row.percent, 2)}</td>
-                      <td>{row.details || '—'}</td>
-                    </tr>
+                        <span className="muted">{row.side || '—'}</span>
+                      </div>
+                      <div className="feed-card-metrics">
+                        <div>
+                          <span className="muted">Shares</span>
+                          <strong className="mono">{formatNumber(row.shares, 2)}</strong>
+                        </div>
+                        <div>
+                          <span className="muted">%</span>
+                          <strong className="mono">{formatNumber(row.percent, 2)}</strong>
+                        </div>
+                        <div>
+                          <span className="muted">Event</span>
+                          <strong className="mono">{formatDate(row.event_date)}</strong>
+                        </div>
+                        <div>
+                          <span className="muted">Filed</span>
+                          <strong className="mono">{formatDate(row.filing_date)}</strong>
+                        </div>
+                      </div>
+                      {row.details ? <p className="feed-card-note muted">{row.details}</p> : null}
+                    </li>
                   ))}
-                </tbody>
-              </table>
+                </ul>
+                <table className="desktop-table">
+                  <thead>
+                    <tr>
+                      <th>Kind</th>
+                      <th>Ticker</th>
+                      <th>Company</th>
+                      <th>Party</th>
+                      <th>Side</th>
+                      <th>Event</th>
+                      <th>Filing</th>
+                      <th>Shares</th>
+                      <th>%</th>
+                      <th>Details</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.items.map((row) => (
+                      <tr key={row.id}>
+                        <td className="mono">{row.kind}</td>
+                        <td className="mono">{row.ticker || '—'}</td>
+                        <td>{row.company_name || '—'}</td>
+                        <td>
+                          {row.source_url ? (
+                            <a href={row.source_url} target="_blank" rel="noreferrer">
+                              {row.party_name || '—'}
+                            </a>
+                          ) : (
+                            row.party_name || '—'
+                          )}
+                        </td>
+                        <td>{row.side || '—'}</td>
+                        <td className="mono">{formatDate(row.event_date)}</td>
+                        <td className="mono">{formatDate(row.filing_date)}</td>
+                        <td className="mono">{formatNumber(row.shares, 2)}</td>
+                        <td className="mono">{formatNumber(row.percent, 2)}</td>
+                        <td>{row.details || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </>
             )
           ) : (
             <div className="empty muted">
