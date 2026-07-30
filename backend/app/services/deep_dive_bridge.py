@@ -488,12 +488,20 @@ def push_candidate(candidate: DeepDiveCandidate) -> DeepDiveCandidate:
 
     try:
         if use_queue:
+            policy = (
+                current_app.config.get("DEEP_DIVE_QUEUE_START_POLICY") or "prompt_now"
+            ).strip().lower()
+            if policy not in {"prompt_now", "overnight"}:
+                policy = "prompt_now"
+            confirm_seconds = int(current_app.config.get("DEEP_DIVE_CONFIRM_SECONDS", 60))
             payload: dict[str, Any] = {
                 "tickers": candidate.ticker,
                 "mode": mode,
                 "template": template,
                 "goal": goal,
                 "from_scratch": False,
+                "start_policy": policy,
+                "confirm_seconds": confirm_seconds if policy == "prompt_now" else 0,
             }
             if pin:
                 payload["pin"] = pin
@@ -521,7 +529,7 @@ def push_candidate(candidate: DeepDiveCandidate) -> DeepDiveCandidate:
             candidate.updated_at = utcnow()
             candidate.error_message = None
             db.session.commit()
-            dest = f"overnight queue ({template})"
+            dest = f"queue ({policy}, {template})"
             job_ref = candidate.research_job_id
         else:
             payload = {

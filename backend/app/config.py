@@ -82,6 +82,9 @@ class Config:
     DEEP_DIVE_RESEARCH_MODE = os.getenv("DEEP_DIVE_RESEARCH_MODE", "deep")
     # Prefer overnight queue (sequential background) over immediate /api/research
     DEEP_DIVE_USE_OVERNIGHT_QUEUE = _as_bool(os.getenv("DEEP_DIVE_USE_OVERNIGHT_QUEUE"), True)
+    # prompt_now: Equity ntfy + auto-start in ~1 min (cancel → overnight)
+    # overnight: only park in overnight queue until Start overnight
+    DEEP_DIVE_QUEUE_START_POLICY = os.getenv("DEEP_DIVE_QUEUE_START_POLICY", "prompt_now")
     DEEP_DIVE_SKIP_IF_RESEARCHED = _as_bool(os.getenv("DEEP_DIVE_SKIP_IF_RESEARCHED"), True)
     DEEP_DIVE_NTFY_ENABLED = _as_bool(os.getenv("DEEP_DIVE_NTFY_ENABLED"), True)
     # Base URL for ntfy Cancel/Push action buttons (no browser needed).

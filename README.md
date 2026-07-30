@@ -66,12 +66,13 @@ Fully background when keep-alive keeps both apps running (no browser required):
 
 1. Hourly US Form 4 sync finds open-market **officer / C-suite buys ≥ $500k**.
 2. Skips tickers already in the Equity overnight queue, actively researching, or with existing reports/docs.
-3. ntfy push (and optional UI banner) starts a **~60s** confirm window with **Cancel** / **Push now** action buttons.
-4. No cancel → enqueue on Equity Research Agent **overnight queue** (`POST /api/queue`, `template=all`).
-5. Cancel → backlog; offered again next hour.
-6. Research agent down → backlog retry. Same ticker not re-pushed for **72h** after success.
+3. FilingDesk optional confirm banner/ntfy, then pushes to Equity **research queue**.
+4. Equity queue mode (`DEEP_DIVE_QUEUE_START_POLICY`):
+   - **`prompt_now`** (default): laptop ntfy — auto-start deep dive in ~1 min; Cancel → stay deferred for overnight/manual Start overnight
+   - **`overnight`**: park only until you hit **Start overnight** (or API)
+5. Equity queue page/API: add tickers, remove ticker, start overnight, pause/resume.
 
-Config: `DEEP_DIVE_*` in `backend/.env.example`. Set `NTFY_TOPIC` for laptop/phone alerts. Action buttons use `DEEP_DIVE_PUBLIC_BASE_URL`, else `data/tunnel_url.txt`, else `http://127.0.0.1:5000` (works with ntfy desktop on the same laptop).
+Config: `DEEP_DIVE_*` in `backend/.env.example`. Set `NTFY_TOPIC` on both apps for laptop alerts.
 
 ---
 

@@ -29,6 +29,7 @@ class TestConfig(Config):
     DEEP_DIVE_RESEARCH_MODE = "deep"
     DEEP_DIVE_RESEARCH_PIN = ""
     DEEP_DIVE_USE_OVERNIGHT_QUEUE = True
+    DEEP_DIVE_QUEUE_START_POLICY = "prompt_now"
     DEEP_DIVE_SKIP_IF_RESEARCHED = True
 
 
@@ -192,6 +193,7 @@ def test_process_expired_pending_pushes(app):
         payload = post_mock.call_args.kwargs.get("json") or post_mock.call_args[1].get("json")
         assert payload["tickers"] == "ACME"
         assert payload["template"] == "all"
+        assert payload["start_policy"] == "prompt_now"
 
 
 def test_agent_down_goes_to_backlog(app):
