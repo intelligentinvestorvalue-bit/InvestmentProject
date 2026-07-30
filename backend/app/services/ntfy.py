@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
+from typing import Optional, Sequence
 
 import requests
 
@@ -18,8 +18,13 @@ def send_ntfy(
     priority: int = 4,
     tags: Optional[str] = None,
     click: Optional[str] = None,
+    actions: Optional[str] = None,
 ) -> bool:
-    """Publish to NTFY_TOPIC when configured. Returns True on success."""
+    """Publish to NTFY_TOPIC when configured. Returns True on success.
+
+    ``actions`` is the raw ntfy Actions header value, e.g.
+    ``http, Cancel, http://127.0.0.1:5000/api/..., method=POST, clear=true``.
+    """
     topic = (os.getenv("NTFY_TOPIC") or "").strip()
     if not topic:
         logger.debug("ntfy skipped: NTFY_TOPIC not set")
@@ -35,6 +40,8 @@ def send_ntfy(
         headers["Tags"] = tags
     if click:
         headers["Click"] = click
+    if actions:
+        headers["Actions"] = actions
     token = (os.getenv("NTFY_TOKEN") or "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -46,3 +53,15 @@ def send_ntfy(
     except Exception:  # noqa: BLE001
         logger.exception("ntfy publish failed")
         return False
+
+
+def build_http_actions(actions: Sequence[tuple[str, str]]) -> str:
+    """Build ntfy Actions header from (label, url) POST pairs."""
+    parts: list[str] = []
+    for label, target in actions:
+        label = (label or "").replace(",", " ").strip() or "Action"
+        target = (target or "").strip()
+        if not target:
+            continue
+        parts.append(f"http, {label}, {target}, method=POST, clear=true")
+    return "; ".join(parts)

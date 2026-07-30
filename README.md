@@ -62,15 +62,16 @@ Keep API + UI + tunnel up at Windows logon and every 30 minutes; push the public
 
 ### Officer buy → Equity Research deep dive
 
-With both apps running locally (FilingDesk `:5000` / UI `:5173`, Equity Research Agent `:8000`):
+Fully background when keep-alive keeps both apps running (no browser required):
 
 1. Hourly US Form 4 sync finds open-market **officer / C-suite buys ≥ $500k**.
-2. FilingDesk stages a confirmation (top banner + notification bell + optional ntfy).
-3. **~60s** to cancel → item goes to **backlog** and is offered again next hour.
-4. No cancel (or **Push now**) → `POST http://127.0.0.1:8000/api/research` with `template=all` (full pack).
-5. Same ticker is not re-pushed for **72h** (cooldown). Research agent down → backlog retry.
+2. Skips tickers already in the Equity overnight queue, actively researching, or with existing reports/docs.
+3. ntfy push (and optional UI banner) starts a **~60s** confirm window with **Cancel** / **Push now** action buttons.
+4. No cancel → enqueue on Equity Research Agent **overnight queue** (`POST /api/queue`, `template=all`).
+5. Cancel → backlog; offered again next hour.
+6. Research agent down → backlog retry. Same ticker not re-pushed for **72h** after success.
 
-Config keys: `DEEP_DIVE_*` in `backend/.env.example`.
+Config: `DEEP_DIVE_*` in `backend/.env.example`. Set `NTFY_TOPIC` for laptop/phone alerts. Action buttons use `DEEP_DIVE_PUBLIC_BASE_URL`, else `data/tunnel_url.txt`, else `http://127.0.0.1:5000` (works with ntfy desktop on the same laptop).
 
 ---
 

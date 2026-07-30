@@ -93,7 +93,7 @@ export default function DeepDiveConfirmBanner() {
                 {item.company_name ? ` · ${item.company_name}` : ''}
               </span>
               <span className="muted">
-                Cancel to defer ~1 hour. No action = auto-start full deep dive.
+                Cancel to defer ~1 hour (ntfy action works without opening a browser). No action = auto-queue deep dive.
               </span>
             </div>
             <div className="deep-dive-banner-actions">

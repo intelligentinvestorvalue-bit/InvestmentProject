@@ -28,6 +28,8 @@ class TestConfig(Config):
     DEEP_DIVE_RESEARCH_TEMPLATE = "all"
     DEEP_DIVE_RESEARCH_MODE = "deep"
     DEEP_DIVE_RESEARCH_PIN = ""
+    DEEP_DIVE_USE_OVERNIGHT_QUEUE = True
+    DEEP_DIVE_SKIP_IF_RESEARCHED = True
 
 
 @pytest.fixture()
@@ -119,7 +121,11 @@ def test_find_qualifying_buys_filters_value_and_role(app):
 def test_stage_cancel_backlog_and_revive(app):
     with app.app_context():
         tx = _tx()
-        candidate = bridge.stage_candidate_from_tx(tx)
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ):
+            candidate = bridge.stage_candidate_from_tx(tx)
         assert candidate is not None
         assert candidate.status == bridge.STATUS_PENDING
         assert candidate.confirm_deadline_at is not None
@@ -133,7 +139,11 @@ def test_stage_cancel_backlog_and_revive(app):
 
         cancelled.retry_after = datetime.now(timezone.utc) - timedelta(minutes=1)
         db.session.commit()
-        assert bridge.revive_backlog()["revived"] == 1
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ):
+            assert bridge.revive_backlog()["revived"] == 1
         refreshed = db.session.get(DeepDiveCandidate, candidate.id)
         assert refreshed.status == bridge.STATUS_PENDING
 
@@ -141,53 +151,99 @@ def test_stage_cancel_backlog_and_revive(app):
 def test_process_expired_pending_pushes(app):
     with app.app_context():
         tx = _tx()
-        candidate = bridge.stage_candidate_from_tx(tx)
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ):
+            candidate = bridge.stage_candidate_from_tx(tx)
         candidate.confirm_deadline_at = datetime.now(timezone.utc) - timedelta(seconds=5)
         db.session.commit()
 
-        fake_resp = MagicMock()
-        fake_resp.ok = True
-        fake_resp.status_code = 200
-        fake_resp.json.return_value = {"job_id": "job-123", "status": "running"}
+        fake_health = MagicMock()
+        fake_health.ok = True
+        fake_health.status_code = 200
 
-        with patch("app.services.deep_dive_bridge.requests.get") as get_mock, patch(
+        fake_queue = MagicMock()
+        fake_queue.ok = True
+        fake_queue.status_code = 200
+        fake_queue.json.return_value = {
+            "added": 1,
+            "tickers": ["ACME"],
+            "created": [{"id": "queue-item-1", "ticker": "ACME"}],
+            "skipped": [],
+        }
+
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ), patch("app.services.deep_dive_bridge.requests.get") as get_mock, patch(
             "app.services.deep_dive_bridge.requests.post"
         ) as post_mock:
-            get_mock.return_value = fake_resp
-            post_mock.return_value = fake_resp
+            get_mock.return_value = fake_health
+            post_mock.return_value = fake_queue
             result = bridge.process_expired_pending()
 
         assert result["pushed"] == 1
         refreshed = db.session.get(DeepDiveCandidate, candidate.id)
         assert refreshed.status == bridge.STATUS_PUSHED
-        assert refreshed.research_job_id == "job-123"
+        assert refreshed.research_job_id == "queue-item-1"
         post_mock.assert_called_once()
+        assert post_mock.call_args.args[0].endswith("/api/queue")
         payload = post_mock.call_args.kwargs.get("json") or post_mock.call_args[1].get("json")
-        assert payload["ticker"] == "ACME"
+        assert payload["tickers"] == "ACME"
         assert payload["template"] == "all"
-        assert payload["collaborative"] is False
 
 
 def test_agent_down_goes_to_backlog(app):
     with app.app_context():
         tx = _tx()
-        candidate = bridge.stage_candidate_from_tx(tx)
-        with patch("app.services.deep_dive_bridge.research_agent_healthy", return_value=False):
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ):
+            candidate = bridge.stage_candidate_from_tx(tx)
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ), patch(
+            "app.services.deep_dive_bridge.research_agent_healthy", return_value=False
+        ):
             bridge.push_candidate(candidate)
         refreshed = db.session.get(DeepDiveCandidate, candidate.id)
         assert refreshed.status == bridge.STATUS_BACKLOG
         assert "unreachable" in (refreshed.error_message or "").lower()
 
 
+def test_skip_when_already_researched(app):
+    with app.app_context():
+        tx = _tx()
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(True, "already researched (job abc)"),
+        ):
+            assert bridge.stage_candidate_from_tx(tx) is None
+        skipped = DeepDiveCandidate.query.filter_by(ticker="ACME", status="skipped").first()
+        assert skipped is not None
+        assert "already researched" in (skipped.error_message or "")
+
+
 def test_cooldown_skips_restage(app):
     with app.app_context():
         tx = _tx()
-        first = bridge.stage_candidate_from_tx(tx)
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ):
+            first = bridge.stage_candidate_from_tx(tx)
         first.status = bridge.STATUS_PUSHED
         first.pushed_at = datetime.now(timezone.utc)
         db.session.commit()
 
-        again = bridge.stage_candidate_from_tx(tx)
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ):
+            again = bridge.stage_candidate_from_tx(tx)
         assert again is None
 
 
@@ -195,7 +251,11 @@ def test_pending_api(app):
     client = app.test_client()
     with app.app_context():
         tx = _tx()
-        bridge.stage_candidate_from_tx(tx)
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ):
+            bridge.stage_candidate_from_tx(tx)
 
     resp = client.get("/api/v1/deep-dive/pending")
     assert resp.status_code == 200

@@ -80,7 +80,13 @@ class Config:
     DEEP_DIVE_RESEARCH_PIN = os.getenv("DEEP_DIVE_RESEARCH_PIN", "")
     DEEP_DIVE_RESEARCH_TEMPLATE = os.getenv("DEEP_DIVE_RESEARCH_TEMPLATE", "all")
     DEEP_DIVE_RESEARCH_MODE = os.getenv("DEEP_DIVE_RESEARCH_MODE", "deep")
+    # Prefer overnight queue (sequential background) over immediate /api/research
+    DEEP_DIVE_USE_OVERNIGHT_QUEUE = _as_bool(os.getenv("DEEP_DIVE_USE_OVERNIGHT_QUEUE"), True)
+    DEEP_DIVE_SKIP_IF_RESEARCHED = _as_bool(os.getenv("DEEP_DIVE_SKIP_IF_RESEARCHED"), True)
     DEEP_DIVE_NTFY_ENABLED = _as_bool(os.getenv("DEEP_DIVE_NTFY_ENABLED"), True)
+    # Base URL for ntfy Cancel/Push action buttons (no browser needed).
+    # Prefer public/tunnel URL for phone; falls back to data/tunnel_url.txt then localhost:5000.
+    DEEP_DIVE_PUBLIC_BASE_URL = os.getenv("DEEP_DIVE_PUBLIC_BASE_URL", "")
     # Comma-separated officer title tokens (matched case-insensitively as substrings)
     DEEP_DIVE_OFFICER_TITLE_KEYWORDS = os.getenv(
         "DEEP_DIVE_OFFICER_TITLE_KEYWORDS",

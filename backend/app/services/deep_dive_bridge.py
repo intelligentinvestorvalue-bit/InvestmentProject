@@ -1,14 +1,13 @@
-"""Bridge: large officer buys → Equity Research Agent full deep-dive queue.
+"""Bridge: large officer buys → Equity Research Agent overnight deep-dive queue.
 
 Flow
 ----
 1. After US insider sync, scan new open-market officer buys >= DEEP_DIVE_MIN_VALUE_USD.
-2. Stage a DeepDiveCandidate in ``pending_confirm`` and notify (in-app + optional ntfy).
-3. Wait DEEP_DIVE_CONFIRM_SECONDS (default 60). User may Cancel → ``backlog``
-   (retry next hour) or Push now → immediate POST to research agent.
-4. If the window expires with no cancel, auto-push ``POST /api/research``
-   (template=all full pack by default).
-5. Cooldown prevents re-pushing the same ticker for DEEP_DIVE_COOLDOWN_HOURS.
+2. Skip tickers already queued / running / researched on the Equity agent.
+3. Stage a DeepDiveCandidate in ``pending_confirm`` and notify (ntfy actions + optional UI).
+4. Wait DEEP_DIVE_CONFIRM_SECONDS (default 60). Cancel via ntfy action or UI → ``backlog``.
+5. On expiry / Push now → ``POST /api/queue`` (overnight sequential pack by default).
+6. Cooldown prevents re-pushing the same ticker for DEEP_DIVE_COOLDOWN_HOURS.
 """
 
 from __future__ import annotations
@@ -26,7 +25,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models import AppNotification, DeepDiveCandidate, InsiderTransaction, utcnow
-from app.services.ntfy import send_ntfy
+from app.services.ntfy import build_http_actions, send_ntfy
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,65 @@ STATUS_BACKLOG = "backlog"
 STATUS_PUSHED = "pushed"
 STATUS_FAILED = "failed"
 STATUS_SKIPPED = "skipped"
+
+
+def _repo_data_dir():
+    from pathlib import Path
+
+    # backend/app/services/this_file.py → repo root / data
+    return Path(__file__).resolve().parents[3] / "data"
+
+
+def resolve_action_base_url() -> str:
+    """URL ntfy action buttons hit (laptop ntfy desktop or phone via tunnel)."""
+    configured = (current_app.config.get("DEEP_DIVE_PUBLIC_BASE_URL") or "").strip().rstrip("/")
+    if configured:
+        return configured
+    tunnel_file = _repo_data_dir() / "tunnel_url.txt"
+    try:
+        if tunnel_file.is_file():
+            url = tunnel_file.read_text(encoding="utf-8").strip().rstrip("/")
+            if url.startswith("http"):
+                return url
+    except OSError:
+        logger.debug("Could not read tunnel_url.txt", exc_info=True)
+    return "http://127.0.0.1:5000"
+
+
+def research_ticker_status(ticker: str) -> dict[str, Any]:
+    """Ask Equity Research Agent if ticker is queued / already researched."""
+    base = str(current_app.config.get("DEEP_DIVE_RESEARCH_URL", "http://127.0.0.1:8000")).rstrip("/")
+    ticker = (ticker or "").upper().strip()
+    if not ticker:
+        return {"should_skip": False, "reachable": False}
+    try:
+        resp = requests.get(f"{base}/api/tickers/{ticker}/status", timeout=6)
+        if resp.status_code == 404:
+            return {"should_skip": False, "reachable": True, "legacy": True}
+        resp.raise_for_status()
+        data = resp.json()
+        data["reachable"] = True
+        return data
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Research ticker status failed for %s: %s", ticker, exc)
+        return {"should_skip": False, "reachable": False, "error": str(exc)}
+
+
+def should_skip_ticker(ticker: str) -> tuple[bool, str | None]:
+    """True when research agent already has this ticker queued or researched."""
+    if not current_app.config.get("DEEP_DIVE_SKIP_IF_RESEARCHED", True):
+        status = research_ticker_status(ticker)
+        if status.get("queued_or_active") or status.get("in_overnight_queue"):
+            return True, status.get("skip_reason") or "already active in research agent"
+        return False, None
+
+    status = research_ticker_status(ticker)
+    if status.get("should_skip"):
+        return True, status.get("skip_reason") or "already covered by research agent"
+    # If status API missing (older agent), still avoid obvious active queue via /api/queue
+    if status.get("legacy") or not status.get("reachable"):
+        return False, None
+    return False, None
 
 
 def _officer_keywords() -> list[str]:
@@ -133,7 +191,7 @@ def _create_in_app_notification(candidate: DeepDiveCandidate, *, seconds: int) -
     body = (
         f"{candidate.officer_title or 'Officer'} {candidate.insider_name or ''} "
         f"bought {_format_usd(candidate.total_value)} of {candidate.company_name or candidate.ticker}. "
-        f"Pushing to Equity Research Agent in ~{seconds}s unless you cancel."
+        f"Pushing to Equity Research Agent overnight queue in ~{seconds}s unless cancelled (ntfy or banner)."
     )
     note = AppNotification(
         kind="deep_dive_push",
@@ -162,16 +220,28 @@ def _create_in_app_notification(candidate: DeepDiveCandidate, *, seconds: int) -
 def _notify_external(candidate: DeepDiveCandidate, *, seconds: int) -> None:
     if not current_app.config.get("DEEP_DIVE_NTFY_ENABLED", True):
         return
+    base = resolve_action_base_url()
+    cancel_url = f"{base}/api/v1/deep-dive/{candidate.id}/cancel"
+    confirm_url = f"{base}/api/v1/deep-dive/{candidate.id}/confirm"
+    actions = build_http_actions(
+        [
+            ("Cancel (retry later)", cancel_url),
+            ("Push now", confirm_url),
+        ]
+    )
     send_ntfy(
         title=f"FilingDesk → deep dive {candidate.ticker}",
         message=(
             f"{candidate.officer_title or 'Officer'} bought "
             f"{_format_usd(candidate.total_value)}. "
-            f"Auto-push in ~{seconds}s — open FilingDesk to cancel."
+            f"Auto-queues Equity Research deep dive in ~{seconds}s. "
+            f"Tap Cancel to defer ~1h, or Push now — no browser needed "
+            f"(ntfy action / laptop keep-alive)."
         ),
         priority=4,
         tags="chart_with_upwards_trend,warning",
-        click=current_app.config.get("DEEP_DIVE_UI_CLICK_URL") or None,
+        click=base,
+        actions=actions,
     )
 
 
@@ -187,6 +257,41 @@ def stage_candidate_from_tx(
 
     if _has_recent_push(ticker, tx.market or "US"):
         logger.info("Skip %s: already pushed within cooldown", ticker)
+        return None
+
+    skip, reason = should_skip_ticker(ticker)
+    if skip:
+        logger.info("Skip %s: %s", ticker, reason)
+        existing_skip = (
+            DeepDiveCandidate.query.filter_by(
+                market=(tx.market or "US").upper(),
+                ticker=ticker,
+                status=STATUS_SKIPPED,
+            )
+            .order_by(DeepDiveCandidate.created_at.desc())
+            .first()
+        )
+        if existing_skip:
+            existing_skip.error_message = reason
+            existing_skip.updated_at = utcnow()
+            db.session.commit()
+            return None
+        skipped = DeepDiveCandidate(
+            market=(tx.market or "US").upper(),
+            ticker=ticker,
+            company_name=tx.company_name,
+            insider_name=tx.insider_name,
+            officer_title=tx.officer_title or tx.relationship,
+            total_value=tx.total_value,
+            transaction_ids_json=json.dumps([tx.id]),
+            accession_number=tx.accession_number,
+            source_url=tx.source_url,
+            status=STATUS_SKIPPED,
+            error_message=reason,
+            cancel_count=0,
+        )
+        db.session.add(skipped)
+        db.session.commit()
         return None
 
     active = _active_for_ticker(ticker, tx.market or "US")
@@ -311,6 +416,12 @@ def revive_backlog(*, now: Optional[datetime] = None) -> dict[str, Any]:
             candidate.error_message = "Skipped: cooldown after a recent push"
             candidate.updated_at = moment
             continue
+        skip, reason = should_skip_ticker(candidate.ticker)
+        if skip:
+            candidate.status = STATUS_SKIPPED
+            candidate.error_message = reason or "Skipped: already covered by research agent"
+            candidate.updated_at = moment
+            continue
         candidate.status = STATUS_PENDING
         candidate.confirm_deadline_at = moment + timedelta(seconds=max(seconds, 5))
         candidate.retry_after = None
@@ -341,11 +452,21 @@ def research_agent_healthy() -> bool:
 
 
 def push_candidate(candidate: DeepDiveCandidate) -> DeepDiveCandidate:
-    """POST ticker to Equity Research Agent /api/research (full pack by default)."""
+    """Enqueue ticker on Equity Research Agent (overnight queue by default)."""
     base = str(current_app.config.get("DEEP_DIVE_RESEARCH_URL", "http://127.0.0.1:8000")).rstrip("/")
     template = current_app.config.get("DEEP_DIVE_RESEARCH_TEMPLATE", "all")
     mode = current_app.config.get("DEEP_DIVE_RESEARCH_MODE", "deep")
     pin = (current_app.config.get("DEEP_DIVE_RESEARCH_PIN") or "").strip() or None
+    use_queue = bool(current_app.config.get("DEEP_DIVE_USE_OVERNIGHT_QUEUE", True))
+
+    skip, reason = should_skip_ticker(candidate.ticker)
+    if skip:
+        candidate.status = STATUS_SKIPPED
+        candidate.error_message = reason or "Skipped at push: already covered"
+        candidate.updated_at = utcnow()
+        db.session.commit()
+        logger.info("Skip push %s: %s", candidate.ticker, reason)
+        return candidate
 
     goal = (
         f"Institutional deep dive triggered by FilingDesk: "
@@ -353,15 +474,7 @@ def push_candidate(candidate: DeepDiveCandidate) -> DeepDiveCandidate:
         f"open-market buy {_format_usd(candidate.total_value)} "
         f"({candidate.company_name or candidate.ticker})."
     )
-    payload: dict[str, Any] = {
-        "ticker": candidate.ticker,
-        "mode": mode,
-        "template": template,
-        "collaborative": False,
-        "goal": re.sub(r"\s+", " ", goal).strip(),
-    }
-    if pin:
-        payload["pin"] = pin
+    goal = re.sub(r"\s+", " ", goal).strip()
 
     if not research_agent_healthy():
         candidate.status = STATUS_BACKLOG
@@ -374,28 +487,89 @@ def push_candidate(candidate: DeepDiveCandidate) -> DeepDiveCandidate:
         return candidate
 
     try:
-        resp = requests.post(f"{base}/api/research", json=payload, timeout=30)
-        if resp.status_code >= 400:
-            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
-        data = resp.json()
-        candidate.status = STATUS_PUSHED
-        candidate.research_job_id = str(data.get("job_id") or "")
-        candidate.pushed_at = utcnow()
-        candidate.updated_at = utcnow()
-        candidate.error_message = None
-        db.session.commit()
+        if use_queue:
+            payload: dict[str, Any] = {
+                "tickers": candidate.ticker,
+                "mode": mode,
+                "template": template,
+                "goal": goal,
+                "from_scratch": False,
+            }
+            if pin:
+                payload["pin"] = pin
+            resp = requests.post(f"{base}/api/queue", json=payload, timeout=30)
+            if resp.status_code >= 400:
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+            data = resp.json()
+            skipped = data.get("skipped") or []
+            if data.get("added", 0) == 0 and skipped:
+                candidate.status = STATUS_SKIPPED
+                candidate.error_message = skipped[0].get("reason") or "Skipped by research queue dedupe"
+                candidate.updated_at = utcnow()
+                db.session.commit()
+                return candidate
+            created_items = data.get("created") or []
+            queue_id = ""
+            if created_items and isinstance(created_items[0], dict):
+                queue_id = str(created_items[0].get("id") or "")
+            if not queue_id:
+                tickers = data.get("tickers") or [candidate.ticker]
+                queue_id = f"queue:{tickers[0]}"
+            candidate.status = STATUS_PUSHED
+            candidate.research_job_id = queue_id
+            candidate.pushed_at = utcnow()
+            candidate.updated_at = utcnow()
+            candidate.error_message = None
+            db.session.commit()
+            dest = f"overnight queue ({template})"
+            job_ref = candidate.research_job_id
+        else:
+            payload = {
+                "ticker": candidate.ticker,
+                "mode": mode,
+                "template": template,
+                "collaborative": False,
+                "goal": goal,
+            }
+            if pin:
+                payload["pin"] = pin
+            resp = requests.post(f"{base}/api/research", json=payload, timeout=30)
+            if resp.status_code == 409:
+                candidate.status = STATUS_SKIPPED
+                detail = resp.json().get("detail") if resp.headers.get("content-type", "").startswith("application/json") else None
+                if isinstance(detail, dict):
+                    candidate.error_message = detail.get("message") or "Already researched"
+                else:
+                    candidate.error_message = str(detail or "Already researched")[:1000]
+                candidate.updated_at = utcnow()
+                db.session.commit()
+                return candidate
+            if resp.status_code >= 400:
+                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+            data = resp.json()
+            if data.get("reused") and data.get("in_overnight_queue"):
+                candidate.status = STATUS_SKIPPED
+                candidate.error_message = data.get("message") or "Already in overnight queue"
+                candidate.updated_at = utcnow()
+                db.session.commit()
+                return candidate
+            candidate.status = STATUS_PUSHED
+            candidate.research_job_id = str(data.get("job_id") or "")
+            candidate.pushed_at = utcnow()
+            candidate.updated_at = utcnow()
+            candidate.error_message = None
+            db.session.commit()
+            dest = f"job {candidate.research_job_id}"
+            job_ref = candidate.research_job_id
 
         note = AppNotification(
             kind="deep_dive_pushed",
-            title=f"Deep dive started: {candidate.ticker}",
-            body=(
-                f"Pushed to Equity Research Agent (job {candidate.research_job_id}). "
-                f"Template={template}."
-            ),
+            title=f"Deep dive queued: {candidate.ticker}",
+            body=f"Sent to Equity Research Agent {dest}. Template={template}.",
             severity="info",
             ticker=candidate.ticker,
             payload_json=json.dumps(
-                {"candidate_id": candidate.id, "job_id": candidate.research_job_id}
+                {"candidate_id": candidate.id, "job_id": candidate.research_job_id, "via": "queue" if use_queue else "research"}
             )[:4000],
             is_read=False,
         )
@@ -407,22 +581,20 @@ def push_candidate(candidate: DeepDiveCandidate) -> DeepDiveCandidate:
 
         if current_app.config.get("DEEP_DIVE_NTFY_ENABLED", True):
             send_ntfy(
-                title=f"Deep dive started: {candidate.ticker}",
-                message=f"Equity Research Agent job {candidate.research_job_id}",
+                title=f"Deep dive queued: {candidate.ticker}",
+                message=f"Equity Research Agent {dest}",
                 priority=3,
                 tags="white_check_mark",
-                click=f"{base}/jobs/{candidate.research_job_id}" if candidate.research_job_id else None,
+                click=f"{base}/queue" if use_queue else (f"{base}/jobs/{job_ref}" if job_ref else base),
             )
-        logger.info("Pushed %s → job %s", candidate.ticker, candidate.research_job_id)
+        logger.info("Pushed %s → %s", candidate.ticker, dest)
     except Exception as exc:  # noqa: BLE001
         logger.exception("Push failed for %s", candidate.ticker)
-        candidate.status = STATUS_FAILED
-        candidate.error_message = str(exc)[:1000]
-        candidate.updated_at = utcnow()
-        # Retry later from backlog path
         minutes = int(current_app.config.get("DEEP_DIVE_BACKLOG_RETRY_MINUTES", 60))
         candidate.status = STATUS_BACKLOG
+        candidate.error_message = str(exc)[:1000]
         candidate.retry_after = utcnow() + timedelta(minutes=max(minutes, 5))
+        candidate.updated_at = utcnow()
         db.session.commit()
     return candidate
 
