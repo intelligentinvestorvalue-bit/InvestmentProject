@@ -40,7 +40,7 @@ class Config:
     US_BACKFILL_MAX_FILINGS = int(os.getenv("US_BACKFILL_MAX_FILINGS", "300"))
     IN_SYNC_DAYS = int(os.getenv("IN_SYNC_DAYS", "120"))
 
-    # Unusual options activity (Yahoo / yfinance)
+    # Unusual options activity — US (Yahoo / yfinance)
     UOA_ENABLED = _as_bool(os.getenv("UOA_ENABLED"), True)
     UOA_POLL_INTERVAL_MINUTES = int(os.getenv("UOA_POLL_INTERVAL_MINUTES", "20"))
     UOA_EOD_HOUR_UTC = int(os.getenv("UOA_EOD_HOUR_UTC", "21"))  # ~4pm ET approx depending on DST
@@ -54,3 +54,17 @@ class Config:
     UOA_TICKER_SLEEP_SECONDS = float(os.getenv("UOA_TICKER_SLEEP_SECONDS", "0.35"))
     UOA_POLL_MAX_TICKERS = int(os.getenv("UOA_POLL_MAX_TICKERS", "25"))
     UOA_EOD_MAX_TICKERS = int(os.getenv("UOA_EOD_MAX_TICKERS", "80"))
+
+    # Unusual options activity — India (NSE F&O option-chain-v3)
+    UOA_IN_ENABLED = _as_bool(os.getenv("UOA_IN_ENABLED"), True)
+    UOA_IN_POLL_INTERVAL_MINUTES = int(os.getenv("UOA_IN_POLL_INTERVAL_MINUTES", "25"))
+    UOA_IN_EOD_HOUR_UTC = int(os.getenv("UOA_IN_EOD_HOUR_UTC", "10"))  # ~3:30pm IST
+    UOA_IN_MAX_EXPIRATIONS = int(os.getenv("UOA_IN_MAX_EXPIRATIONS", "3"))
+    UOA_IN_MAX_DTE = int(os.getenv("UOA_IN_MAX_DTE", "90"))
+    UOA_IN_MIN_VOLUME = float(os.getenv("UOA_IN_MIN_VOLUME", "100"))
+    UOA_IN_MIN_VOL_OI = float(os.getenv("UOA_IN_MIN_VOL_OI", "1.5"))
+    UOA_IN_MIN_PREMIUM = float(os.getenv("UOA_IN_MIN_PREMIUM", "100000"))  # INR notional
+    UOA_IN_NOTIFY_MIN_SCORE = float(os.getenv("UOA_IN_NOTIFY_MIN_SCORE", "35"))
+    UOA_IN_TICKER_SLEEP_SECONDS = float(os.getenv("UOA_IN_TICKER_SLEEP_SECONDS", "0.6"))
+    UOA_IN_POLL_MAX_TICKERS = int(os.getenv("UOA_IN_POLL_MAX_TICKERS", "20"))
+    UOA_IN_EOD_MAX_TICKERS = int(os.getenv("UOA_IN_EOD_MAX_TICKERS", "60"))

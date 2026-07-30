@@ -11,8 +11,8 @@ Personal research desk for **US and India** markets.
 | Company research | SEC XBRL multi-year statements (expanded GAAP tags + FCF proxy) | Yahoo Finance annual statements (.NS / .BO) |
 | Sector explore | SIC-based sectors from SEC submissions | Yahoo sector/industry metadata |
 | Watchlists | Saved ticker screens | Saved ticker screens |
-| Unusual options (UOA) | Yahoo delayed chains: watchlist + liquid universe, call/put + bid/ask direction, in-app alerts | Planned (India F&O later) |
-| Scheduled sync | Auto Form 4 refresh + UOA poll/EOD | Auto PIT + pledge/SAST refresh |
+| Unusual options (UOA) | Yahoo delayed chains: watchlist + liquid universe, call/put + bid/ask direction, in-app alerts | NSE F&O option-chain-v3: indices + equity FO, same direction model, in-app alerts |
+| Scheduled sync | Auto Form 4 refresh + UOA poll/EOD | Auto PIT + pledge/SAST refresh + India UOA poll/EOD |
 
 Legacy notes from earlier experiments live in `docs/legacy/`.
 
@@ -47,6 +47,7 @@ Suggested first-run flow:
 3. **Research** a ticker (e.g. `AAPL` / `RELIANCE`)
 4. **Explore → Enrich sector metadata**
 5. **US → Options → Scan sample** (Yahoo delayed UOA; in-app bell for alerts)
+6. **India → Options → Scan sample** (NSE F&O option-chain UOA)
 
 ### Remote access (Cloudflare + ntfy)
 
@@ -102,7 +103,7 @@ pytest -q
 | Market | Insider | Financials / explore | Options |
 |---|---|---|---|
 | US | SEC Form 4 atom + ownership XML (free) | SEC XBRL companyfacts + submissions SIC | Yahoo/yfinance delayed chains (UOA) |
-| India | NSE corporates-pit Market Purchase/Sale (free; includes BSE-reported rows) | Yahoo Finance annual statements + sector/industry (free) | Planned |
+| India | NSE corporates-pit Market Purchase/Sale (free; includes BSE-reported rows) | Yahoo Finance annual statements + sector/industry (free) | NSE option-chain-v3 F&O (indices + equities) |
 
 ---
 

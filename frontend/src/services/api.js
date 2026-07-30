@@ -133,8 +133,8 @@ export function fetchUnusualOptions(params = {}) {
   return request(`/api/v1/options/unusual?${qs.toString()}`)
 }
 
-export function fetchUnusualMeta() {
-  return request('/api/v1/options/unusual/meta')
+export function fetchUnusualMeta(market = 'US') {
+  return request(`/api/v1/options/unusual/meta?market=${encodeURIComponent(market)}`)
 }
 
 export function scanUnusualOptions(payload = {}) {

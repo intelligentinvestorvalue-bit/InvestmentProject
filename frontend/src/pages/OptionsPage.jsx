@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { fetchUnusualMeta, fetchUnusualOptions, scanUnusualOptions } from '../services/api'
-import { formatDate, formatMoney, formatNumber } from '../utils/format'
+import { currencyForMarket, formatDate, formatMoney, formatNumber } from '../utils/format'
 
 const EMPTY = {
   underlying: '',
@@ -10,6 +10,7 @@ const EMPTY = {
 }
 
 export default function OptionsPage({ market }) {
+  const currency = currencyForMarket(market)
   const [filters, setFilters] = useState(EMPTY)
   const [applied, setApplied] = useState(EMPTY)
   const [page, setPage] = useState(1)
@@ -37,7 +38,7 @@ export default function OptionsPage({ market }) {
     let cancelled = false
     async function loadMeta() {
       try {
-        const next = await fetchUnusualMeta()
+        const next = await fetchUnusualMeta(market)
         if (!cancelled) setMeta(next)
       } catch {
         if (!cancelled) setMeta(null)
@@ -47,7 +48,7 @@ export default function OptionsPage({ market }) {
     return () => {
       cancelled = true
     }
-  }, [scanning])
+  }, [market, scanning])
 
   useEffect(() => {
     let cancelled = false
@@ -81,16 +82,15 @@ export default function OptionsPage({ market }) {
   }, [market, applied, page])
 
   async function handleScan() {
-    if (market !== 'US') return
     setScanning(true)
     setScanNote('')
     setError('')
     try {
       const result = await scanUnusualOptions({
-        market: 'US',
+        market,
         include_watchlist: true,
         include_liquid: true,
-        max_tickers: 12,
+        max_tickers: market === 'IN' ? 8 : 12,
       })
       setScanNote(
         `Scan ${result.status}: ${result.tickers_scanned || 0} tickers · ${result.alerts_upserted || 0} new alerts · ${result.notifications_created || 0} notifications`,
@@ -104,33 +104,24 @@ export default function OptionsPage({ market }) {
     }
   }
 
-  if (market !== 'US') {
-    return (
-      <section className="panel planned">
-        <h2>Unusual options — India later</h2>
-        <p className="muted">
-          UOA is US-first via delayed Yahoo option chains. India F&amp;O scanning is planned after the US desk stabilizes.
-        </p>
-      </section>
-    )
-  }
+  const heroCopy =
+    market === 'IN'
+      ? 'NSE F&O option-chain scanner for watchlist + liquid India names (indices and equities). Direction blends call/put bias with bid/ask aggressiveness. Alerts stay in-app only.'
+      : 'Delayed Yahoo chain scanner for watchlist + liquid US names. Direction blends call/put bias with bid/ask aggressiveness. Alerts stay in-app only.'
 
   return (
     <>
       <section className="hero-strip">
         <h1>Unusual options</h1>
-        <p>
-          Delayed Yahoo chain scanner for watchlist + liquid US names. Direction blends call/put bias with bid/ask
-          aggressiveness. Alerts stay in-app only.
-        </p>
+        <p>{heroCopy}</p>
       </section>
 
       <section className="panel">
         <div className="panel-header">
           <div>
-            <h2>Activity feed</h2>
+            <h2>Activity feed · {market === 'IN' ? 'India F&O' : 'US'}</h2>
             <p>
-              Source: {meta?.source || 'Yahoo Finance (delayed)'}
+              Source: {meta?.source || (market === 'IN' ? 'NSE option-chain-v3' : 'Yahoo Finance (delayed)')}
               {data.scan_date ? ` · scan day ${data.scan_date}` : ''}
               {data.latest_scan?.status
                 ? ` · last run ${data.latest_scan.trigger} (${data.latest_scan.status})`
@@ -160,7 +151,7 @@ export default function OptionsPage({ market }) {
               id="uoa-ticker"
               value={filters.underlying}
               onChange={(e) => setFilters({ ...filters, underlying: e.target.value.toUpperCase() })}
-              placeholder="NVDA"
+              placeholder={market === 'IN' ? 'NIFTY / RELIANCE' : 'NVDA'}
             />
           </div>
           <div className="field">
@@ -187,7 +178,7 @@ export default function OptionsPage({ market }) {
             >
               <option value="">All</option>
               <option value="watchlist">Watchlist</option>
-              <option value="liquid100">Liquid 100</option>
+              <option value="liquid100">Liquid set</option>
             </select>
           </div>
           <div className="field">
@@ -223,7 +214,7 @@ export default function OptionsPage({ market }) {
               Reset
             </button>
             <button type="button" className="btn btn-primary" disabled={scanning} onClick={handleScan}>
-              {scanning ? 'Scanning…' : 'Scan sample (12)'}
+              {scanning ? 'Scanning…' : market === 'IN' ? 'Scan sample (8)' : 'Scan sample (12)'}
             </button>
           </div>
         </div>
@@ -326,7 +317,7 @@ export default function OptionsPage({ market }) {
                         {formatNumber(row.volume)} / {formatNumber(row.open_interest)}
                         <div className="muted">Vol/OI {formatNumber(row.vol_oi)}</div>
                       </td>
-                      <td className="mono">{formatMoney(row.premium, 'USD')}</td>
+                      <td className="mono">{formatMoney(row.premium, currency)}</td>
                       <td className="mono">
                         <strong>{formatNumber(row.score)}</strong>
                       </td>
