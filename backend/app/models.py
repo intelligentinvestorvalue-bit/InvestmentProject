@@ -411,7 +411,7 @@ class DeepDiveCandidate(db.Model):
     accession_number = db.Column(db.String(64), nullable=True)
     source_url = db.Column(db.String(512), nullable=True)
 
-    # pending_confirm | backlog | pushed | failed | skipped | cancelled_final
+    # pending_confirm | backlog | pushed | failed | skipped | followup | cancelled_final
     status = db.Column(db.String(32), nullable=False, default="pending_confirm", index=True)
     confirm_deadline_at = db.Column(db.DateTime, nullable=True, index=True)
     retry_after = db.Column(db.DateTime, nullable=True, index=True)

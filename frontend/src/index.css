@@ -583,6 +583,10 @@ table {
   min-width: 980px;
 }
 
+.desktop-table tr.row-focus td {
+  background: rgba(15, 61, 62, 0.08);
+}
+
 .research-table {
   min-width: 640px;
 }

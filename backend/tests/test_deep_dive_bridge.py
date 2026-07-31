@@ -20,8 +20,9 @@ class TestConfig(Config):
     SCHEDULER_ENABLED = False
     DEEP_DIVE_BRIDGE_ENABLED = True
     DEEP_DIVE_CONFIRM_SECONDS = 60
-    DEEP_DIVE_MIN_VALUE_USD = 500_000
+    DEEP_DIVE_MIN_VALUE_USD = 100_000
     DEEP_DIVE_NTFY_ENABLED = False
+    DEEP_DIVE_ONCE_PER_TICKER = True
     DEEP_DIVE_COOLDOWN_HOURS = 72
     DEEP_DIVE_BACKLOG_RETRY_MINUTES = 60
     DEEP_DIVE_RESEARCH_URL = "http://127.0.0.1:8000"
@@ -99,7 +100,7 @@ def test_find_qualifying_buys_filters_value_and_role(app):
         _tx(total_value=600_000, accession_number="a1")
         _tx(
             ticker="SMALL",
-            total_value=100_000,
+            total_value=99_000,
             accession_number="a2",
             insider_name="Small Buy",
         )
@@ -241,12 +242,46 @@ def test_cooldown_skips_restage(app):
         first.pushed_at = datetime.now(timezone.utc)
         db.session.commit()
 
+        later = _tx(accession_number="0001-26-000099", total_value=750_000)
         with patch(
             "app.services.deep_dive_bridge.should_skip_ticker",
             return_value=(False, None),
         ):
-            again = bridge.stage_candidate_from_tx(tx)
+            again = bridge.stage_candidate_from_tx(later)
         assert again is None
+        followups = DeepDiveCandidate.query.filter_by(
+            ticker="ACME", status=bridge.STATUS_FOLLOWUP
+        ).all()
+        assert len(followups) == 1
+        assert followups[0].total_value == 750_000
+
+
+def test_followups_api(app):
+    client = app.test_client()
+    with app.app_context():
+        tx = _tx()
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ):
+            first = bridge.stage_candidate_from_tx(tx)
+        first.status = bridge.STATUS_PUSHED
+        first.pushed_at = datetime.now(timezone.utc)
+        db.session.commit()
+        later = _tx(accession_number="0001-26-000088", total_value=900_000)
+        with patch(
+            "app.services.deep_dive_bridge.should_skip_ticker",
+            return_value=(False, None),
+        ):
+            bridge.stage_candidate_from_tx(later)
+
+    resp = client.get("/api/v1/deep-dive/followups?market=US")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["once_per_ticker"] is True
+    assert data["total"] >= 1
+    assert data["items"][0]["ticker"] == "ACME"
+    assert data["items"][0]["status"] == "followup"
 
 
 def test_pending_api(app):

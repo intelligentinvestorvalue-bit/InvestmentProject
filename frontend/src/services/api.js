@@ -192,3 +192,14 @@ export function scanDeepDive(payload = {}) {
     body: JSON.stringify(payload),
   })
 }
+
+export function fetchDeepDiveFollowups(params = {}) {
+  const qs = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      qs.set(key, value)
+    }
+  })
+  const suffix = qs.toString() ? `?${qs.toString()}` : ''
+  return request(`/api/v1/deep-dive/followups${suffix}`)
+}

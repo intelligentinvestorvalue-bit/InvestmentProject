@@ -28,6 +28,24 @@ def candidates():
     return jsonify({"items": bridge.list_candidates(status=status, limit=limit)})
 
 
+@deep_dive_bp.get("/deep-dive/followups")
+def followups():
+    """Later qualifying buys for tickers already deep-dived (not re-queued)."""
+    from flask import current_app
+
+    market = (request.args.get("market") or "US").upper()
+    limit = _as_int(request.args.get("limit"), 50)
+    items = bridge.list_followups(market=market, limit=limit)
+    return jsonify(
+        {
+            "market": market,
+            "total": len(items),
+            "items": items,
+            "once_per_ticker": bool(current_app.config.get("DEEP_DIVE_ONCE_PER_TICKER", True)),
+        }
+    )
+
+
 @deep_dive_bp.post("/deep-dive/<int:candidate_id>/cancel")
 def cancel(candidate_id: int):
     row = bridge.cancel_candidate(candidate_id)

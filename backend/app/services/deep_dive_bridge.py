@@ -7,7 +7,9 @@ Flow
 3. Stage a DeepDiveCandidate in ``pending_confirm`` and notify (ntfy actions + optional UI).
 4. Wait DEEP_DIVE_CONFIRM_SECONDS (default 60). Cancel via ntfy action or UI → ``backlog``.
 5. On expiry / Push now → ``POST /api/queue`` (overnight sequential pack by default).
-6. Cooldown prevents re-pushing the same ticker for DEEP_DIVE_COOLDOWN_HOURS.
+6. By default never re-queue a ticker after a successful push (DEEP_DIVE_ONCE_PER_TICKER).
+   Later qualifying buys for that ticker are stored as ``followup`` rows for the Follow-ups view
+   (optional timed cooldown only when once-per-ticker is off).
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ STATUS_BACKLOG = "backlog"
 STATUS_PUSHED = "pushed"
 STATUS_FAILED = "failed"
 STATUS_SKIPPED = "skipped"
+STATUS_FOLLOWUP = "followup"
 
 
 def _repo_data_dir():
@@ -132,20 +135,138 @@ def _cooldown_cutoff() -> datetime:
     return utcnow() - timedelta(hours=max(hours, 1))
 
 
-def _has_recent_push(ticker: str, market: str = "US") -> bool:
-    cutoff = _cooldown_cutoff()
-    existing = (
+def _once_per_ticker() -> bool:
+    return bool(current_app.config.get("DEEP_DIVE_ONCE_PER_TICKER", True))
+
+
+def _has_pushed_ticker(ticker: str, market: str = "US") -> bool:
+    """True when this ticker was already pushed to Equity Research."""
+    query = DeepDiveCandidate.query.filter(
+        DeepDiveCandidate.market == market,
+        DeepDiveCandidate.ticker == ticker.upper(),
+        DeepDiveCandidate.status == STATUS_PUSHED,
+        DeepDiveCandidate.pushed_at.isnot(None),
+    )
+    if not _once_per_ticker():
+        query = query.filter(DeepDiveCandidate.pushed_at >= _cooldown_cutoff())
+    return query.order_by(DeepDiveCandidate.pushed_at.desc()).first() is not None
+
+
+def _followup_exists_for_tx(tx: InsiderTransaction) -> bool:
+    ticker = (tx.ticker or "").strip().upper()
+    market = (tx.market or "US").upper()
+    if tx.accession_number:
+        hit = (
+            DeepDiveCandidate.query.filter_by(
+                market=market,
+                ticker=ticker,
+                status=STATUS_FOLLOWUP,
+                accession_number=tx.accession_number,
+            )
+            .order_by(DeepDiveCandidate.created_at.desc())
+            .first()
+        )
+        if hit:
+            return True
+    rows = (
+        DeepDiveCandidate.query.filter_by(market=market, ticker=ticker, status=STATUS_FOLLOWUP)
+        .order_by(DeepDiveCandidate.created_at.desc())
+        .limit(40)
+        .all()
+    )
+    for row in rows:
+        try:
+            ids = json.loads(row.transaction_ids_json or "[]")
+        except json.JSONDecodeError:
+            ids = []
+        if tx.id in ids:
+            return True
+    return False
+
+
+def record_followup_from_tx(tx: InsiderTransaction) -> Optional[DeepDiveCandidate]:
+    """Store a later qualifying buy for an already-pushed ticker (no Equity re-queue)."""
+    ticker = (tx.ticker or "").strip().upper()
+    if not ticker:
+        return None
+    if _followup_exists_for_tx(tx):
+        return None
+
+    prior = (
         DeepDiveCandidate.query.filter(
-            DeepDiveCandidate.market == market,
-            DeepDiveCandidate.ticker == ticker.upper(),
+            DeepDiveCandidate.market == (tx.market or "US").upper(),
+            DeepDiveCandidate.ticker == ticker,
             DeepDiveCandidate.status == STATUS_PUSHED,
             DeepDiveCandidate.pushed_at.isnot(None),
-            DeepDiveCandidate.pushed_at >= cutoff,
         )
         .order_by(DeepDiveCandidate.pushed_at.desc())
         .first()
     )
-    return existing is not None
+    prior_note = ""
+    if prior and prior.pushed_at:
+        prior_note = f" Prior deep dive pushed {prior.pushed_at.date().isoformat()}."
+
+    followup = DeepDiveCandidate(
+        market=(tx.market or "US").upper(),
+        ticker=ticker,
+        company_name=tx.company_name,
+        insider_name=tx.insider_name,
+        officer_title=tx.officer_title or tx.relationship,
+        total_value=tx.total_value,
+        transaction_ids_json=json.dumps([tx.id]),
+        accession_number=tx.accession_number,
+        source_url=tx.source_url,
+        status=STATUS_FOLLOWUP,
+        error_message=f"Already deep-dived; recorded as follow-up only.{prior_note}".strip(),
+        cancel_count=0,
+    )
+    db.session.add(followup)
+    db.session.commit()
+
+    try:
+        title = f"Follow-up buy: {ticker}"
+        body = (
+            f"{followup.officer_title or 'Officer'} {followup.insider_name or ''} "
+            f"bought {_format_usd(followup.total_value)} of {followup.company_name or ticker}."
+            f"{prior_note} Not re-queued for deep dive — see Follow-ups."
+        )
+        note = AppNotification(
+            kind="deep_dive_followup",
+            title=title[:255],
+            body=body.strip(),
+            severity="info",
+            ticker=ticker,
+            payload_json=json.dumps(
+                {
+                    "candidate_id": followup.id,
+                    "total_value": followup.total_value,
+                    "officer_title": followup.officer_title,
+                    "insider_name": followup.insider_name,
+                    "accession_number": followup.accession_number,
+                    "source_url": followup.source_url,
+                    "prior_pushed_at": prior.pushed_at.isoformat() if prior and prior.pushed_at else None,
+                }
+            ),
+        )
+        db.session.add(note)
+        db.session.commit()
+        followup.notification_id = note.id
+        db.session.commit()
+    except Exception:  # noqa: BLE001
+        logger.exception("Failed to create follow-up notification for %s", ticker)
+
+    logger.info("Recorded deep-dive follow-up for %s id=%s", ticker, followup.id)
+    return followup
+
+
+def list_followups(*, market: str = "US", limit: int = 50) -> list[dict[str, Any]]:
+    rows = (
+        DeepDiveCandidate.query.filter_by(market=market.upper(), status=STATUS_FOLLOWUP)
+        .order_by(DeepDiveCandidate.created_at.desc())
+        .limit(max(1, min(limit, 200)))
+        .all()
+    )
+    return [row.to_dict() for row in rows]
 
 
 def _active_for_ticker(ticker: str, market: str = "US") -> Optional[DeepDiveCandidate]:
@@ -170,7 +291,7 @@ def find_qualifying_buys(
     threshold = float(
         min_value
         if min_value is not None
-        else current_app.config.get("DEEP_DIVE_MIN_VALUE_USD", 500_000)
+        else current_app.config.get("DEEP_DIVE_MIN_VALUE_USD", 100_000)
     )
     query = InsiderTransaction.query.filter(
         InsiderTransaction.market == market,
@@ -255,8 +376,10 @@ def stage_candidate_from_tx(
     if not ticker:
         return None
 
-    if _has_recent_push(ticker, tx.market or "US"):
-        logger.info("Skip %s: already pushed within cooldown", ticker)
+    if _has_pushed_ticker(ticker, tx.market or "US"):
+        reason = "already pushed (once per ticker)" if _once_per_ticker() else "within cooldown"
+        logger.info("Skip deep-dive queue for %s: %s — recording follow-up", ticker, reason)
+        record_followup_from_tx(tx)
         return None
 
     skip, reason = should_skip_ticker(ticker)
@@ -366,6 +489,7 @@ def scan_and_stage(*, since: Optional[datetime] = None, market: str = "US") -> d
     buys = find_qualifying_buys(since=since, market=market)
     staged = 0
     skipped = 0
+    followups = 0
     seen_tickers: set[str] = set()
     # Prefer highest-value buy per ticker in this batch.
     buys_sorted = sorted(buys, key=lambda r: r.total_value or 0, reverse=True)
@@ -375,9 +499,13 @@ def scan_and_stage(*, since: Optional[datetime] = None, market: str = "US") -> d
             continue
         seen_tickers.add(ticker)
         existed = _active_for_ticker(ticker, market) is not None
+        already_pushed = _has_pushed_ticker(ticker, market)
         result = stage_candidate_from_tx(tx)
         if result is None:
-            skipped += 1
+            if already_pushed:
+                followups += 1
+            else:
+                skipped += 1
         elif existed:
             skipped += 1
         else:
@@ -387,6 +515,7 @@ def scan_and_stage(*, since: Optional[datetime] = None, market: str = "US") -> d
         "qualifying_buys": len(buys),
         "staged": staged,
         "skipped": skipped,
+        "followups": followups,
         "tickers": sorted(seen_tickers),
     }
 
@@ -411,9 +540,13 @@ def revive_backlog(*, now: Optional[datetime] = None) -> dict[str, Any]:
     )
     revived = 0
     for candidate in due:
-        if _has_recent_push(candidate.ticker, candidate.market):
+        if _has_pushed_ticker(candidate.ticker, candidate.market):
             candidate.status = STATUS_SKIPPED
-            candidate.error_message = "Skipped: cooldown after a recent push"
+            candidate.error_message = (
+                "Skipped: ticker already deep-dived"
+                if _once_per_ticker()
+                else "Skipped: cooldown after a recent push"
+            )
             candidate.updated_at = moment
             continue
         skip, reason = should_skip_ticker(candidate.ticker)
@@ -707,9 +840,11 @@ def pending_summary() -> dict[str, Any]:
         .all()
     )
     backlog = DeepDiveCandidate.query.filter_by(status=STATUS_BACKLOG).count()
+    followups = DeepDiveCandidate.query.filter_by(status=STATUS_FOLLOWUP).count()
     return {
         "pending": [p.to_dict() for p in pending],
         "backlog_count": backlog,
+        "followup_count": followups,
         "server_time": utcnow().isoformat(),
         "research_url": current_app.config.get("DEEP_DIVE_RESEARCH_URL"),
         "research_reachable": research_agent_healthy()
@@ -717,5 +852,6 @@ def pending_summary() -> dict[str, Any]:
         else False,
         "enabled": bool(current_app.config.get("DEEP_DIVE_BRIDGE_ENABLED", True)),
         "confirm_seconds": int(current_app.config.get("DEEP_DIVE_CONFIRM_SECONDS", 60)),
-        "min_value_usd": float(current_app.config.get("DEEP_DIVE_MIN_VALUE_USD", 500_000)),
+        "min_value_usd": float(current_app.config.get("DEEP_DIVE_MIN_VALUE_USD", 100_000)),
+        "once_per_ticker": _once_per_ticker(),
     }

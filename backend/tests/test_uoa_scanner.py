@@ -46,6 +46,34 @@ def test_score_contract_ranks_high_vol_oi_and_premium():
     assert quiet > 0
 
 
+def test_passes_unusual_gates_requires_vol_oi():
+    from app.services.uoa_scanner import passes_unusual_gates
+
+    ok, vol_oi = passes_unusual_gates(
+        volume=500,
+        open_interest=100,
+        premium=60_000,
+        min_volume=500,
+        min_premium=50_000,
+        min_vol_oi=3.0,
+        require_vol_oi=True,
+    )
+    assert ok is True
+    assert vol_oi == 5.0
+
+    # High premium alone no longer bypasses Vol/OI when require_vol_oi=True
+    ok, _ = passes_unusual_gates(
+        volume=500,
+        open_interest=1000,
+        premium=500_000,
+        min_volume=500,
+        min_premium=50_000,
+        min_vol_oi=3.0,
+        require_vol_oi=True,
+    )
+    assert ok is False
+
+
 def test_india_lot_size_known_and_fallback():
     assert india_lot_size("NIFTY") == 65
     assert india_lot_size("RELIANCE") >= 1

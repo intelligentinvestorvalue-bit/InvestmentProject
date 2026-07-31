@@ -1,8 +1,45 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { fetchNotifications, markAllNotificationsRead, markNotificationRead } from '../services/api'
 import { formatDate } from '../utils/format'
 
+function kindLabel(kind) {
+  if (kind === 'deep_dive_push') return 'deep dive'
+  if (kind === 'deep_dive_pushed') return 'deep dive started'
+  if (kind === 'deep_dive_cancelled') return 'deep dive deferred'
+  if (kind === 'deep_dive_followup') return 'follow-up buy'
+  if (kind === 'uoa') return 'unusual options'
+  return kind || 'alert'
+}
+
+function routeForNote(note) {
+  if (note.kind === 'uoa') {
+    const params = new URLSearchParams()
+    if (note.ticker) params.set('ticker', note.ticker)
+    try {
+      const payload = note.payload_json ? JSON.parse(note.payload_json) : null
+      if (payload?.sentiment) params.set('sentiment', payload.sentiment)
+      if (payload?.option_type) params.set('option_type', payload.option_type)
+      if (payload?.score != null) {
+        // Floor dashboard at this print's score so the clicked alert is visible.
+        params.set('min_score', String(Math.max(0, Math.floor(Number(payload.score) - 5))))
+      }
+      if (payload?.market === 'IN') {
+        // Market switch is parent-owned; still land on options with ticker filter.
+      }
+    } catch {
+      /* ignore bad payload */
+    }
+    const qs = params.toString()
+    return qs ? `/options?${qs}` : '/options'
+  }
+  if (note.kind === 'deep_dive_followup') return '/followups'
+  if (String(note.kind || '').startsWith('deep_dive')) return '/'
+  return null
+}
+
 export default function NotificationBell() {
+  const navigate = useNavigate()
   const [open, setOpen] = useState(false)
   const [items, setItems] = useState([])
   const [unread, setUnread] = useState(0)
@@ -42,13 +79,16 @@ export default function NotificationBell() {
     if (!open) await refresh()
   }
 
-  async function onRead(id) {
+  async function onSelect(note) {
     try {
-      await markNotificationRead(id)
-      await refresh()
+      await markNotificationRead(note.id)
     } catch {
       /* ignore */
     }
+    setOpen(false)
+    const path = routeForNote(note)
+    if (path) navigate(path)
+    else await refresh()
   }
 
   async function onReadAll() {
@@ -79,19 +119,14 @@ export default function NotificationBell() {
           <ul className="notify-list">
             {items.map((note) => (
               <li key={note.id} className={note.is_read ? 'read' : 'unread'}>
-                <button type="button" onClick={() => onRead(note.id)}>
+                <button type="button" onClick={() => onSelect(note)}>
                   <strong>{note.title}</strong>
                   <span className="muted">{note.body}</span>
                   <span className="muted notify-meta">
-                    {note.kind === 'deep_dive_push'
-                      ? 'deep dive'
-                      : note.kind === 'deep_dive_pushed'
-                        ? 'deep dive started'
-                        : note.kind === 'deep_dive_cancelled'
-                          ? 'deep dive deferred'
-                          : note.kind}
+                    {kindLabel(note.kind)}
                     {note.ticker ? ` · ${note.ticker}` : ''}
                     {note.created_at ? ` · ${formatDate(note.created_at)}` : ''}
+                    {routeForNote(note) ? ' · open dashboard' : ''}
                   </span>
                 </button>
               </li>

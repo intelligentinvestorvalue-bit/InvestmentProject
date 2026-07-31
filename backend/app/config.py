@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 _BACKEND_ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(_BACKEND_ROOT / ".env")
+load_dotenv(_BACKEND_ROOT / ".env", override=True)
 
 _DEFAULT_DB = _BACKEND_ROOT / "instance" / "filingdesk.db"
 
@@ -46,11 +46,16 @@ class Config:
     UOA_EOD_HOUR_UTC = int(os.getenv("UOA_EOD_HOUR_UTC", "21"))  # ~4pm ET approx depending on DST
     UOA_MAX_EXPIRATIONS = int(os.getenv("UOA_MAX_EXPIRATIONS", "3"))
     UOA_MAX_DTE = int(os.getenv("UOA_MAX_DTE", "90"))
-    UOA_MIN_VOLUME = float(os.getenv("UOA_MIN_VOLUME", "200"))
-    UOA_MIN_VOL_OI = float(os.getenv("UOA_MIN_VOL_OI", "2.0"))
-    UOA_MIN_PREMIUM = float(os.getenv("UOA_MIN_PREMIUM", "25000"))
-    UOA_NOTIFY_MIN_SCORE = float(os.getenv("UOA_NOTIFY_MIN_SCORE", "35"))
-    UOA_MAX_ALERTS_PER_SCAN = int(os.getenv("UOA_MAX_ALERTS_PER_SCAN", "150"))
+    UOA_MIN_VOLUME = float(os.getenv("UOA_MIN_VOLUME", "500"))
+    UOA_MIN_VOL_OI = float(os.getenv("UOA_MIN_VOL_OI", "3.0"))
+    UOA_MIN_PREMIUM = float(os.getenv("UOA_MIN_PREMIUM", "50000"))
+    UOA_NOTIFY_MIN_SCORE = float(os.getenv("UOA_NOTIFY_MIN_SCORE", "80"))
+    UOA_STORE_MIN_SCORE = float(os.getenv("UOA_STORE_MIN_SCORE", "55"))
+    # Require Vol/OI (no high-premium bypass) so stored rows are actually unusual.
+    UOA_REQUIRE_VOL_OI = _as_bool(os.getenv("UOA_REQUIRE_VOL_OI"), True)
+    # Only notify clear bullish/bearish (skip mixed/unclear).
+    UOA_NOTIFY_CLEAR_SENTIMENT_ONLY = _as_bool(os.getenv("UOA_NOTIFY_CLEAR_SENTIMENT_ONLY"), True)
+    UOA_MAX_ALERTS_PER_SCAN = int(os.getenv("UOA_MAX_ALERTS_PER_SCAN", "80"))
     UOA_TICKER_SLEEP_SECONDS = float(os.getenv("UOA_TICKER_SLEEP_SECONDS", "0.35"))
     UOA_POLL_MAX_TICKERS = int(os.getenv("UOA_POLL_MAX_TICKERS", "25"))
     UOA_EOD_MAX_TICKERS = int(os.getenv("UOA_EOD_MAX_TICKERS", "80"))
@@ -61,18 +66,22 @@ class Config:
     UOA_IN_EOD_HOUR_UTC = int(os.getenv("UOA_IN_EOD_HOUR_UTC", "10"))  # ~3:30pm IST
     UOA_IN_MAX_EXPIRATIONS = int(os.getenv("UOA_IN_MAX_EXPIRATIONS", "3"))
     UOA_IN_MAX_DTE = int(os.getenv("UOA_IN_MAX_DTE", "90"))
-    UOA_IN_MIN_VOLUME = float(os.getenv("UOA_IN_MIN_VOLUME", "100"))
-    UOA_IN_MIN_VOL_OI = float(os.getenv("UOA_IN_MIN_VOL_OI", "1.5"))
-    UOA_IN_MIN_PREMIUM = float(os.getenv("UOA_IN_MIN_PREMIUM", "100000"))  # INR notional
-    UOA_IN_NOTIFY_MIN_SCORE = float(os.getenv("UOA_IN_NOTIFY_MIN_SCORE", "35"))
+    UOA_IN_MIN_VOLUME = float(os.getenv("UOA_IN_MIN_VOLUME", "150"))
+    UOA_IN_MIN_VOL_OI = float(os.getenv("UOA_IN_MIN_VOL_OI", "2.0"))
+    UOA_IN_MIN_PREMIUM = float(os.getenv("UOA_IN_MIN_PREMIUM", "150000"))  # INR notional
+    UOA_IN_NOTIFY_MIN_SCORE = float(os.getenv("UOA_IN_NOTIFY_MIN_SCORE", "80"))
+    UOA_IN_STORE_MIN_SCORE = float(os.getenv("UOA_IN_STORE_MIN_SCORE", "55"))
     UOA_IN_TICKER_SLEEP_SECONDS = float(os.getenv("UOA_IN_TICKER_SLEEP_SECONDS", "0.6"))
     UOA_IN_POLL_MAX_TICKERS = int(os.getenv("UOA_IN_POLL_MAX_TICKERS", "20"))
     UOA_IN_EOD_MAX_TICKERS = int(os.getenv("UOA_IN_EOD_MAX_TICKERS", "60"))
 
     # Large officer buys → Equity Research Agent full deep-dive pack
     DEEP_DIVE_BRIDGE_ENABLED = _as_bool(os.getenv("DEEP_DIVE_BRIDGE_ENABLED"), True)
-    DEEP_DIVE_MIN_VALUE_USD = float(os.getenv("DEEP_DIVE_MIN_VALUE_USD", "500000"))
+    DEEP_DIVE_MIN_VALUE_USD = float(os.getenv("DEEP_DIVE_MIN_VALUE_USD", "100000"))
     DEEP_DIVE_CONFIRM_SECONDS = int(os.getenv("DEEP_DIVE_CONFIRM_SECONDS", "60"))
+    # Never re-queue a ticker after a successful deep-dive push (recommended).
+    DEEP_DIVE_ONCE_PER_TICKER = _as_bool(os.getenv("DEEP_DIVE_ONCE_PER_TICKER"), True)
+    # Only used when DEEP_DIVE_ONCE_PER_TICKER=0
     DEEP_DIVE_COOLDOWN_HOURS = int(os.getenv("DEEP_DIVE_COOLDOWN_HOURS", "72"))
     DEEP_DIVE_BACKLOG_RETRY_MINUTES = int(os.getenv("DEEP_DIVE_BACKLOG_RETRY_MINUTES", "60"))
     DEEP_DIVE_TICK_SECONDS = int(os.getenv("DEEP_DIVE_TICK_SECONDS", "10"))

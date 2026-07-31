@@ -166,6 +166,28 @@ def score_contract(
     return round(score, 2)
 
 
+def passes_unusual_gates(
+    *,
+    volume: float,
+    open_interest: float,
+    premium: float,
+    min_volume: float,
+    min_premium: float,
+    min_vol_oi: float,
+    require_vol_oi: bool = True,
+) -> tuple[bool, float]:
+    """Return (passes, vol_oi). Require volume/premium; Vol/OI is required when configured."""
+    if volume < min_volume or premium < min_premium:
+        return False, 0.0
+    vol_oi = volume / max(open_interest, 1.0)
+    if require_vol_oi:
+        if vol_oi < min_vol_oi:
+            return False, vol_oi
+    elif vol_oi < min_vol_oi and premium < (min_premium * 4):
+        return False, vol_oi
+    return True, vol_oi
+
+
 def india_lot_size(symbol: str) -> int:
     return int(IN_LOT_SIZES.get(symbol.upper().strip(), 1))
 
@@ -296,10 +318,17 @@ def scan_us_ticker_contracts(
                 if not px or px <= 0:
                     continue
                 premium = volume * 100.0 * px
-                if premium < min_premium:
-                    continue
-                vol_oi = volume / max(oi, 1.0)
-                if vol_oi < min_vol_oi and premium < (min_premium * 4):
+                require_vol_oi = bool(current_app.config.get("UOA_REQUIRE_VOL_OI", True))
+                ok, vol_oi = passes_unusual_gates(
+                    volume=volume,
+                    open_interest=oi,
+                    premium=premium,
+                    min_volume=min_volume,
+                    min_premium=min_premium,
+                    min_vol_oi=min_vol_oi,
+                    require_vol_oi=require_vol_oi,
+                )
+                if not ok:
                     continue
 
                 aggressiveness = classify_aggressiveness(last, bid, ask)
@@ -311,6 +340,9 @@ def scan_us_ticker_contracts(
                     vol_oi=vol_oi,
                     dte=dte,
                 )
+                store_min = float(current_app.config.get("UOA_STORE_MIN_SCORE", 55))
+                if score < store_min:
+                    continue
                 unusual.append(
                     {
                         "market": "US",
@@ -416,10 +448,17 @@ def scan_india_ticker_contracts(
                 if not px or px <= 0:
                     continue
                 premium = volume * float(lot) * px
-                if premium < min_premium:
-                    continue
-                vol_oi = volume / max(oi, 1.0)
-                if vol_oi < min_vol_oi and premium < (min_premium * 4):
+                require_vol_oi = bool(current_app.config.get("UOA_REQUIRE_VOL_OI", True))
+                ok, vol_oi = passes_unusual_gates(
+                    volume=volume,
+                    open_interest=oi,
+                    premium=premium,
+                    min_volume=min_volume,
+                    min_premium=min_premium,
+                    min_vol_oi=min_vol_oi,
+                    require_vol_oi=require_vol_oi,
+                )
+                if not ok:
                     continue
 
                 aggressiveness = classify_aggressiveness(last, bid, ask)
@@ -431,6 +470,14 @@ def scan_india_ticker_contracts(
                     vol_oi=vol_oi,
                     dte=dte,
                 )
+                store_min = float(
+                    current_app.config.get(
+                        "UOA_IN_STORE_MIN_SCORE",
+                        current_app.config.get("UOA_STORE_MIN_SCORE", 55),
+                    )
+                )
+                if score < store_min:
+                    continue
                 unusual.append(
                     {
                         "market": "IN",
@@ -492,15 +539,18 @@ def _upsert_alerts(rows: list[dict[str, Any]], *, universe: str, scan_day: date)
 
 def _create_notifications(alerts: Iterable[UnusualOptionAlert], *, min_score: float) -> int:
     created = 0
+    clear_only = bool(current_app.config.get("UOA_NOTIFY_CLEAR_SENTIMENT_ONLY", True))
     for alert in alerts:
         if (alert.score or 0) < min_score:
+            continue
+        if clear_only and (alert.sentiment or "") not in {"bullish", "bearish"}:
             continue
         currency = "₹" if alert.market == "IN" else "$"
         title = f"UOA {alert.market} {alert.sentiment or 'signal'}: {alert.underlying} {alert.option_type}"
         body = (
             f"{alert.contract_symbol} · vol {int(alert.volume or 0)} · "
             f"Vol/OI {alert.vol_oi} · premium {currency}{alert.premium:,.0f} · "
-            f"{alert.aggressiveness} · {alert.reason}"
+            f"score {alert.score} · {alert.aggressiveness} · {alert.reason}"
         )
         note = AppNotification(
             kind="uoa",
@@ -527,19 +577,19 @@ def _thresholds_for_market(market: str) -> dict[str, float | int]:
         return {
             "max_expirations": int(cfg.get("UOA_IN_MAX_EXPIRATIONS", cfg.get("UOA_MAX_EXPIRATIONS", 3))),
             "max_dte": int(cfg.get("UOA_IN_MAX_DTE", cfg.get("UOA_MAX_DTE", 90))),
-            "min_volume": float(cfg.get("UOA_IN_MIN_VOLUME", 100)),
-            "min_vol_oi": float(cfg.get("UOA_IN_MIN_VOL_OI", 1.5)),
-            "min_premium": float(cfg.get("UOA_IN_MIN_PREMIUM", 100_000)),
-            "notify_min_score": float(cfg.get("UOA_IN_NOTIFY_MIN_SCORE", cfg.get("UOA_NOTIFY_MIN_SCORE", 35))),
+            "min_volume": float(cfg.get("UOA_IN_MIN_VOLUME", 150)),
+            "min_vol_oi": float(cfg.get("UOA_IN_MIN_VOL_OI", 2.0)),
+            "min_premium": float(cfg.get("UOA_IN_MIN_PREMIUM", 150_000)),
+            "notify_min_score": float(cfg.get("UOA_IN_NOTIFY_MIN_SCORE", cfg.get("UOA_NOTIFY_MIN_SCORE", 80))),
             "sleep_seconds": float(cfg.get("UOA_IN_TICKER_SLEEP_SECONDS", 0.6)),
         }
     return {
         "max_expirations": int(cfg.get("UOA_MAX_EXPIRATIONS", 3)),
         "max_dte": int(cfg.get("UOA_MAX_DTE", 90)),
-        "min_volume": float(cfg.get("UOA_MIN_VOLUME", 200)),
-        "min_vol_oi": float(cfg.get("UOA_MIN_VOL_OI", 2.0)),
-        "min_premium": float(cfg.get("UOA_MIN_PREMIUM", 25000)),
-        "notify_min_score": float(cfg.get("UOA_NOTIFY_MIN_SCORE", 35)),
+        "min_volume": float(cfg.get("UOA_MIN_VOLUME", 500)),
+        "min_vol_oi": float(cfg.get("UOA_MIN_VOL_OI", 3.0)),
+        "min_premium": float(cfg.get("UOA_MIN_PREMIUM", 50000)),
+        "notify_min_score": float(cfg.get("UOA_NOTIFY_MIN_SCORE", 80)),
         "sleep_seconds": float(cfg.get("UOA_TICKER_SLEEP_SECONDS", 0.35)),
     }
 
@@ -634,7 +684,11 @@ def list_uoa_alerts(
     sentiment: Optional[str] = None,
     underlying: Optional[str] = None,
     universe: Optional[str] = None,
+    option_type: Optional[str] = None,
+    aggressiveness: Optional[str] = None,
     min_score: Optional[float] = None,
+    min_vol_oi: Optional[float] = None,
+    min_premium: Optional[float] = None,
     page: int = 1,
     page_size: int = 50,
 ) -> dict[str, Any]:
@@ -654,8 +708,16 @@ def list_uoa_alerts(
         query = query.filter(UnusualOptionAlert.underlying == clean)
     if universe:
         query = query.filter(UnusualOptionAlert.universe == universe)
+    if option_type:
+        query = query.filter(UnusualOptionAlert.option_type == option_type.lower())
+    if aggressiveness:
+        query = query.filter(UnusualOptionAlert.aggressiveness == aggressiveness.lower())
     if min_score is not None:
         query = query.filter(UnusualOptionAlert.score >= min_score)
+    if min_vol_oi is not None:
+        query = query.filter(UnusualOptionAlert.vol_oi >= min_vol_oi)
+    if min_premium is not None:
+        query = query.filter(UnusualOptionAlert.premium >= min_premium)
 
     total = query.count()
     page = max(page, 1)

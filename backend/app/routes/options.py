@@ -48,7 +48,11 @@ def get_unusual_options():
             sentiment=request.args.get("sentiment"),
             underlying=request.args.get("underlying") or request.args.get("ticker"),
             universe=request.args.get("universe"),
+            option_type=request.args.get("option_type"),
+            aggressiveness=request.args.get("aggressiveness"),
             min_score=_as_float(request.args.get("min_score")),
+            min_vol_oi=_as_float(request.args.get("min_vol_oi")),
+            min_premium=_as_float(request.args.get("min_premium")),
             page=_as_int(request.args.get("page"), 1),
             page_size=_as_int(request.args.get("page_size"), 50),
         )
@@ -91,6 +95,13 @@ def unusual_meta():
             "notify_min_score": current_app.config.get(
                 "UOA_IN_NOTIFY_MIN_SCORE", current_app.config.get("UOA_NOTIFY_MIN_SCORE")
             ),
+            "store_min_score": current_app.config.get(
+                "UOA_IN_STORE_MIN_SCORE", current_app.config.get("UOA_STORE_MIN_SCORE")
+            ),
+            "require_vol_oi": current_app.config.get("UOA_REQUIRE_VOL_OI", True),
+            "notify_clear_sentiment_only": current_app.config.get(
+                "UOA_NOTIFY_CLEAR_SENTIMENT_ONLY", True
+            ),
         }
         timing = {
             "near_realtime_minutes": current_app.config.get("UOA_IN_POLL_INTERVAL_MINUTES"),
@@ -104,6 +115,11 @@ def unusual_meta():
             "min_premium": current_app.config.get("UOA_MIN_PREMIUM"),
             "max_dte": current_app.config.get("UOA_MAX_DTE"),
             "notify_min_score": current_app.config.get("UOA_NOTIFY_MIN_SCORE"),
+            "store_min_score": current_app.config.get("UOA_STORE_MIN_SCORE"),
+            "require_vol_oi": current_app.config.get("UOA_REQUIRE_VOL_OI", True),
+            "notify_clear_sentiment_only": current_app.config.get(
+                "UOA_NOTIFY_CLEAR_SENTIMENT_ONLY", True
+            ),
         }
         timing = {
             "near_realtime_minutes": current_app.config.get("UOA_POLL_INTERVAL_MINUTES"),
