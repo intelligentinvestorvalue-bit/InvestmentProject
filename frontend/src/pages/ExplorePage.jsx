@@ -237,7 +237,11 @@ export default function ExplorePage({ market }) {
                     {companies.map((row) => (
                       <tr key={`${row.market}-${row.ticker}`}>
                         <td className="mono">
-                          <Link to="/research" onClick={() => sessionStorage.setItem('fd_ticker', row.ticker)}>
+                          <Link
+                            to={`/research?ticker=${encodeURIComponent(row.ticker)}`}
+                            onClick={() => sessionStorage.setItem('fd_ticker', row.ticker)}
+                            className="ticker-link"
+                          >
                             {row.ticker}
                           </Link>
                         </td>

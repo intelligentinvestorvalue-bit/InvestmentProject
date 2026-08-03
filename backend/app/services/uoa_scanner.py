@@ -540,17 +540,49 @@ def _upsert_alerts(rows: list[dict[str, Any]], *, universe: str, scan_day: date)
 def _create_notifications(alerts: Iterable[UnusualOptionAlert], *, min_score: float) -> int:
     created = 0
     clear_only = bool(current_app.config.get("UOA_NOTIFY_CLEAR_SENTIMENT_ONLY", True))
+    agg_labels = {
+        "buy_ask": "aggressive buy near ask",
+        "sell_bid": "aggressive sell near bid",
+        "mid": "mid-spread print",
+        "unknown": "bid/ask unavailable",
+    }
     for alert in alerts:
         if (alert.score or 0) < min_score:
             continue
         if clear_only and (alert.sentiment or "") not in {"bullish", "bearish"}:
             continue
         currency = "₹" if alert.market == "IN" else "$"
-        title = f"UOA {alert.market} {alert.sentiment or 'signal'}: {alert.underlying} {alert.option_type}"
+        strike_txt = ""
+        if alert.strike is not None:
+            strike_txt = f"{currency}{alert.strike:,.2f}".rstrip("0").rstrip(".")
+        exp_txt = alert.expiration.isoformat() if alert.expiration else "n/a"
+        dte_txt = f"{alert.dte}d" if alert.dte is not None else "n/a"
+        opt = (alert.option_type or "option").upper()
+        sentiment = (alert.sentiment or "signal").title()
+        flow = agg_labels.get(alert.aggressiveness or "", alert.aggressiveness or "unknown flow")
+        score_txt = f"{float(alert.score):.1f}" if alert.score is not None else "n/a"
+        vol_oi_txt = f"{float(alert.vol_oi):.2f}×" if alert.vol_oi is not None else "n/a"
+        premium_txt = f"{currency}{float(alert.premium or 0):,.0f}"
+        title = (
+            f"{sentiment} {opt} · {alert.underlying} {strike_txt}".strip()
+            + f" · {exp_txt} ({dte_txt})"
+        )
+        quote_bits: list[str] = []
+        if alert.last_price is not None:
+            quote_bits.append(f"last {currency}{alert.last_price:.2f}")
+        if alert.bid is not None and alert.ask is not None:
+            quote_bits.append(f"bid/ask {currency}{alert.bid:.2f}/{currency}{alert.ask:.2f}")
+        if alert.implied_volatility is not None:
+            iv = float(alert.implied_volatility)
+            iv_pct = iv * 100.0 if iv <= 2.0 else iv
+            quote_bits.append(f"IV {iv_pct:.1f}%")
+        quote_line = " · ".join(quote_bits) if quote_bits else "quote n/a"
         body = (
-            f"{alert.contract_symbol} · vol {int(alert.volume or 0)} · "
-            f"Vol/OI {alert.vol_oi} · premium {currency}{alert.premium:,.0f} · "
-            f"score {alert.score} · {alert.aggressiveness} · {alert.reason}"
+            f"{flow} · est. notional premium {premium_txt}\n"
+            f"Vol {int(alert.volume or 0):,} vs OI {int(alert.open_interest or 0):,} "
+            f"· Vol/OI {vol_oi_txt} · score {score_txt}\n"
+            f"{quote_line}\n"
+            f"Why: {alert.reason or 'unusual volume vs open interest'}"
         )
         note = AppNotification(
             kind="uoa",

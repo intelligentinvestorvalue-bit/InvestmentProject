@@ -134,9 +134,22 @@ def unusual_meta():
             "universes": ["watchlist", "liquid100"],
             "thresholds": thresholds,
             "direction_model": [
-                "Calls lean bullish; puts lean bearish",
-                "Last near ask ≈ aggressive buy; near bid ≈ aggressive sell/hedge (mixed)",
+                "Calls lean bullish; puts lean bearish.",
+                "Last near ask ≈ aggressive buy of the option; last near bid ≈ aggressive sell / possible hedge (often labeled mixed).",
+                "Score blends Vol/OI, premium size, volume, and days-to-expiry. Higher = more unusual.",
+                (
+                    "Est. notional premium ≈ volume × 100 × mid (US) "
+                    "or volume × lot size × mid (India)."
+                ),
+                "In-app alerts fire only for clear bullish/bearish rows at/above the notify score.",
             ],
+            "field_help": {
+                "vol_oi": "Today's volume divided by open interest. Higher means more of the outstanding contracts traded today.",
+                "premium": "Estimated notional dollars/rupees exchanged for the print (not account P&L).",
+                "score": "Unusualness score (roughly 0–100+). Dashboard filter defaults to the notify threshold.",
+                "aggressiveness": "Where the last print sat in the bid/ask spread.",
+                "sentiment": "Directional bias after combining call/put with aggressiveness.",
+            },
             "timing": timing,
             "currency": "INR" if market == "IN" else "USD",
         }

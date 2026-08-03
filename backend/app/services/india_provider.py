@@ -26,6 +26,33 @@ PLEDGE_MODES = {
     "invocation of pledge": "invoke",
 }
 
+# Top-down row order for statement tables (matches Yahoo mapper field order).
+INDIA_METRIC_ORDER: dict[str, list[str]] = {
+    "income_statement": [
+        "Revenue",
+        "CostOfRevenue",
+        "GrossProfit",
+        "OperatingIncome",
+        "EBITDA",
+        "NetIncome",
+    ],
+    "balance_sheet": [
+        "Assets",
+        "CurrentAssets",
+        "Cash",
+        "Liabilities",
+        "CurrentLiabilities",
+        "LongTermDebt",
+        "StockholdersEquity",
+    ],
+    "cash_flow": [
+        "OperatingCashFlow",
+        "InvestingCashFlow",
+        "FinancingCashFlow",
+        "Capex",
+    ],
+}
+
 
 class NseClient:
     """Browser-like NSE session (cookie warm-up required)."""
@@ -626,7 +653,9 @@ def get_india_financials(ticker: str, *, years: int = 5, refresh: bool = False) 
         "exchange": company.exchange,
         "retrieved_utc": datetime.now(timezone.utc).isoformat(),
         "cached": False,
+        "cache_note": "Fresh from Yahoo Finance; saved locally for next loads.",
         "note": f"Free Yahoo Finance annual statements ({payload.get('yahoo_symbol')}).",
+        "metric_order": INDIA_METRIC_ORDER,
         "statements": statements,
     }
 
@@ -662,7 +691,9 @@ def _india_shape_from_cache(rows: list[AnnualFinancial]) -> dict[str, Any]:
         "exchange": company.exchange if company else None,
         "retrieved_utc": datetime.now(timezone.utc).isoformat(),
         "cached": True,
+        "cache_note": "Served from local DB cache. Click Refresh to re-pull Yahoo.",
         "note": "Cached India financial statements.",
+        "metric_order": INDIA_METRIC_ORDER,
         "statements": {
             name: [by_year[y] for y in sorted(by_year.keys(), reverse=True)]
             for name, by_year in buckets.items()

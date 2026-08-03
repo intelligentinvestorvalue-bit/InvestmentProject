@@ -284,6 +284,15 @@ def parse_financial_statements(facts_json: dict[str, Any], *, years: int = 10) -
     }
 
 
+def statement_metric_order() -> dict[str, list[str]]:
+    """Canonical top-down line order for each statement."""
+    return {
+        "income_statement": [name for name, _ in INCOME_TAGS],
+        "balance_sheet": [name for name, _ in BALANCE_TAGS],
+        "cash_flow": [name for name, _tags in CASHFLOW_TAGS],
+    }
+
+
 def _upsert_company_from_submissions(client: SecEdgarClient, *, ticker: str, cik: str, name: str) -> Company:
     sector = None
     industry = None
@@ -395,6 +404,8 @@ def get_us_financials(ticker: str, *, years: int = 10, refresh: bool = False) ->
         "company_name": company_name,
         "retrieved_utc": datetime.now(timezone.utc).isoformat(),
         "cached": False,
+        "cache_note": "Fresh from SEC XBRL; saved locally for next loads.",
+        "metric_order": statement_metric_order(),
         "statements": statements,
     }
 
@@ -425,6 +436,8 @@ def _shape_from_cache(rows: list[AnnualFinancial]) -> dict[str, Any]:
         "company_name": company_name,
         "retrieved_utc": datetime.now(timezone.utc).isoformat(),
         "cached": True,
+        "cache_note": "Served from local DB cache. Click Refresh to re-pull SEC XBRL.",
+        "metric_order": statement_metric_order(),
         "statements": {
             name: [by_year[y] for y in sorted(by_year.keys(), reverse=True)]
             for name, by_year in buckets.items()

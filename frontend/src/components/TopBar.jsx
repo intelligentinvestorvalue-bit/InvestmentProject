@@ -17,7 +17,7 @@ export default function TopBar({ market, onMarketChange }) {
         </div>
 
         <div className="topbar-actions">
-          <NotificationBell />
+          <NotificationBell onMarketChange={onMarketChange} />
           <div className="market-switch" role="tablist" aria-label="Market">
             <button
               type="button"

@@ -166,13 +166,15 @@ def fetch_india_statements(ticker: str, exchange: Optional[str] = None, *, years
         return None
 
     def map_income(row: dict[str, Any]) -> dict[str, Any]:
+        # Insertion order = display order (top-down P&L).
         return {
             "year": year_from(row),
             "Revenue": _raw_number(row.get("totalRevenue")),
+            "CostOfRevenue": _raw_number(row.get("costOfRevenue")),
             "GrossProfit": _raw_number(row.get("grossProfit")),
             "OperatingIncome": _raw_number(row.get("operatingIncome")),
-            "NetIncome": _raw_number(row.get("netIncome")),
             "EBITDA": _raw_number(row.get("ebitda")),
+            "NetIncome": _raw_number(row.get("netIncome")),
         }
 
     def map_balance(row: dict[str, Any]) -> dict[str, Any]:
@@ -183,8 +185,8 @@ def fetch_india_statements(ticker: str, exchange: Optional[str] = None, *, years
             "Cash": _raw_number(row.get("cash")),
             "Liabilities": _raw_number(row.get("totalLiab")),
             "CurrentLiabilities": _raw_number(row.get("totalCurrentLiabilities")),
-            "StockholdersEquity": _raw_number(row.get("totalStockholderEquity")),
             "LongTermDebt": _raw_number(row.get("longTermDebt")),
+            "StockholdersEquity": _raw_number(row.get("totalStockholderEquity")),
         }
 
     def map_cash(row: dict[str, Any]) -> dict[str, Any]:

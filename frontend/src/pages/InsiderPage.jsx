@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   fetchDisclosures,
   fetchHealth,
@@ -31,11 +32,63 @@ const EMPTY_FILTERS = {
   sort: 'filing_date_desc',
 }
 
+function defaultFilters(market) {
+  if (market === 'US') {
+    return {
+      ...EMPTY_FILTERS,
+      side: 'buy',
+      role: 'officer',
+      min_value: '100000',
+    }
+  }
+  return { ...EMPTY_FILTERS }
+}
+
+/** Stable pastel palette from filing date string — same date ⇒ same color. */
+function filingDateHue(dateStr) {
+  if (!dateStr) return null
+  let hash = 2166136261
+  const key = String(dateStr).slice(0, 10)
+  for (let i = 0; i < key.length; i += 1) {
+    hash ^= key.charCodeAt(i)
+    hash = Math.imul(hash, 16777619)
+  }
+  return Math.abs(hash) % 360
+}
+
+function filingDateRowStyle(dateStr) {
+  const hue = filingDateHue(dateStr)
+  if (hue == null) return undefined
+  return {
+    '--filing-hue': String(hue),
+  }
+}
+
+function researchTickerPath(ticker) {
+  if (!ticker) return '/research'
+  return `/research?ticker=${encodeURIComponent(ticker)}`
+}
+
+function TickerLink({ ticker }) {
+  if (!ticker || ticker === '—' || ticker === 'NONE' || ticker === 'N/A' || ticker === '[NONE]') {
+    return <span className="mono">{ticker || '—'}</span>
+  }
+  return (
+    <Link
+      className="mono ticker-link"
+      to={researchTickerPath(ticker)}
+      onClick={() => sessionStorage.setItem('fd_ticker', ticker)}
+    >
+      {ticker}
+    </Link>
+  )
+}
+
 export default function InsiderPage({ market }) {
   const currency = currencyForMarket(market)
   const [view, setView] = useState('open_market')
-  const [filters, setFilters] = useState(EMPTY_FILTERS)
-  const [applied, setApplied] = useState(EMPTY_FILTERS)
+  const [filters, setFilters] = useState(() => defaultFilters(market))
+  const [applied, setApplied] = useState(() => defaultFilters(market))
   const [page, setPage] = useState(1)
   const [data, setData] = useState({ items: [], total: 0, page_size: 50 })
   const [meta, setMeta] = useState(null)
@@ -53,8 +106,9 @@ export default function InsiderPage({ market }) {
   const busy = syncing || backfilling
 
   useEffect(() => {
-    setFilters(EMPTY_FILTERS)
-    setApplied(EMPTY_FILTERS)
+    const next = defaultFilters(market)
+    setFilters(next)
+    setApplied(next)
     setPage(1)
     setView('open_market')
     setError('')
@@ -130,8 +184,9 @@ export default function InsiderPage({ market }) {
   }
 
   function resetFilters() {
-    setFilters(EMPTY_FILTERS)
-    setApplied(EMPTY_FILTERS)
+    const next = defaultFilters(market)
+    setFilters(next)
+    setApplied(next)
     setPage(1)
   }
 
@@ -317,61 +372,58 @@ export default function InsiderPage({ market }) {
             </datalist>
           </div>
           {showOpenMarket ? (
-            <details className="filter-more">
-              <summary>More filters</summary>
-              <div className="filter-more-grid">
-                <div className="field">
-                  <label htmlFor="filing_date_from">Filing from</label>
-                  <input
-                    id="filing_date_from"
-                    type="date"
-                    value={filters.filing_date_from}
-                    onChange={(e) => updateFilter('filing_date_from', e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="filing_date_to">Filing to</label>
-                  <input
-                    id="filing_date_to"
-                    type="date"
-                    value={filters.filing_date_to}
-                    onChange={(e) => updateFilter('filing_date_to', e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="min_value">Min value</label>
-                  <input
-                    id="min_value"
-                    type="number"
-                    min="0"
-                    inputMode="decimal"
-                    value={filters.min_value}
-                    onChange={(e) => updateFilter('min_value', e.target.value)}
-                    placeholder={market === 'US' ? '100000' : ''}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="max_value">Max value</label>
-                  <input
-                    id="max_value"
-                    type="number"
-                    min="0"
-                    inputMode="decimal"
-                    value={filters.max_value}
-                    onChange={(e) => updateFilter('max_value', e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="sort">Sort</label>
-                  <select id="sort" value={filters.sort} onChange={(e) => updateFilter('sort', e.target.value)}>
-                    <option value="filing_date_desc">Filing date ↓</option>
-                    <option value="transaction_date_desc">Tx date ↓</option>
-                    <option value="value_desc">Value ↓</option>
-                    <option value="shares_desc">Shares ↓</option>
-                  </select>
-                </div>
+            <>
+              <div className="field">
+                <label htmlFor="filing_date_from">Filing from</label>
+                <input
+                  id="filing_date_from"
+                  type="date"
+                  value={filters.filing_date_from}
+                  onChange={(e) => updateFilter('filing_date_from', e.target.value)}
+                />
               </div>
-            </details>
+              <div className="field">
+                <label htmlFor="filing_date_to">Filing to</label>
+                <input
+                  id="filing_date_to"
+                  type="date"
+                  value={filters.filing_date_to}
+                  onChange={(e) => updateFilter('filing_date_to', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="min_value">Min value</label>
+                <input
+                  id="min_value"
+                  type="number"
+                  min="0"
+                  inputMode="decimal"
+                  value={filters.min_value}
+                  onChange={(e) => updateFilter('min_value', e.target.value)}
+                  placeholder={market === 'US' ? '100000' : ''}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="max_value">Max value</label>
+                <input
+                  id="max_value"
+                  type="number"
+                  min="0"
+                  inputMode="decimal"
+                  value={filters.max_value}
+                  onChange={(e) => updateFilter('max_value', e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="sort">Sort</label>
+                <select id="sort" value={filters.sort} onChange={(e) => updateFilter('sort', e.target.value)}>
+                  <option value="filing_date_desc">Filing date ↓</option>
+                  <option value="transaction_date_desc">Tx date ↓</option>
+                  <option value="value_desc">Value ↓</option>
+                  <option value="shares_desc">Shares ↓</option>
+                </select>
+              </div>
+            </>
           ) : null}
           <div className="actions actions-stretch">
             <button className="btn btn-primary" type="submit">
@@ -393,10 +445,16 @@ export default function InsiderPage({ market }) {
               <>
                 <ul className="feed-cards">
                   {data.items.map((row) => (
-                    <li key={`card-${row.id}`} className="feed-card">
+                    <li
+                      key={`card-${row.id}`}
+                      className="feed-card filing-date-group"
+                      style={filingDateRowStyle(row.filing_date)}
+                    >
                       <div className="feed-card-top">
                         <div>
-                          <strong className="mono">{row.ticker || '—'}</strong>
+                          <strong className="mono">
+                            <TickerLink ticker={row.ticker} />
+                          </strong>
                           <span className="muted feed-card-sub">{row.company_name || '—'}</span>
                         </div>
                         <span className={`side-pill ${row.transaction_side}`}>{row.transaction_side}</span>
@@ -426,7 +484,7 @@ export default function InsiderPage({ market }) {
                         </div>
                         <div>
                           <span className="muted">Filed</span>
-                          <strong className="mono">{formatDate(row.filing_date)}</strong>
+                          <strong className="mono filing-date-chip">{formatDate(row.filing_date)}</strong>
                         </div>
                       </div>
                     </li>
@@ -450,11 +508,17 @@ export default function InsiderPage({ market }) {
                   </thead>
                   <tbody>
                     {data.items.map((row) => (
-                      <tr key={row.id}>
+                      <tr
+                        key={row.id}
+                        className="filing-date-group"
+                        style={filingDateRowStyle(row.filing_date)}
+                      >
                         <td>
                           <span className={`side-pill ${row.transaction_side}`}>{row.transaction_side}</span>
                         </td>
-                        <td className="mono">{row.ticker || '—'}</td>
+                        <td>
+                          <TickerLink ticker={row.ticker} />
+                        </td>
                         <td>{row.company_name || '—'}</td>
                         <td>
                           {row.source_url ? (
@@ -468,7 +532,9 @@ export default function InsiderPage({ market }) {
                         <td>{row.relationship || '—'}</td>
                         {market === 'IN' ? <td className="mono">{row.exchange || '—'}</td> : null}
                         <td className="mono">{formatDate(row.transaction_date)}</td>
-                        <td className="mono">{formatDate(row.filing_date)}</td>
+                        <td className="mono">
+                          <span className="filing-date-chip">{formatDate(row.filing_date)}</span>
+                        </td>
                         <td className="mono">{formatNumber(row.shares, 2)}</td>
                         <td className="mono">{formatMoney(row.price_per_share, currency)}</td>
                         <td className="mono">{formatMoney(row.total_value, currency)}</td>
@@ -483,11 +549,13 @@ export default function InsiderPage({ market }) {
                   {data.items.map((row) => (
                     <li key={`card-${row.id}`} className="feed-card">
                       <div className="feed-card-top">
-                        <div>
-                          <strong className="mono">{row.ticker || '—'}</strong>
-                          <span className="muted feed-card-sub">{row.company_name || '—'}</span>
-                        </div>
-                        <span className="side-pill">{row.kind}</span>
+                          <div>
+                            <strong className="mono">
+                              <TickerLink ticker={row.ticker} />
+                            </strong>
+                            <span className="muted feed-card-sub">{row.company_name || '—'}</span>
+                          </div>
+                          <span className="side-pill">{row.kind}</span>
                       </div>
                       <div className="feed-card-body">
                         {row.source_url ? (
@@ -540,7 +608,9 @@ export default function InsiderPage({ market }) {
                     {data.items.map((row) => (
                       <tr key={row.id}>
                         <td className="mono">{row.kind}</td>
-                        <td className="mono">{row.ticker || '—'}</td>
+                        <td>
+                          <TickerLink ticker={row.ticker} />
+                        </td>
                         <td>{row.company_name || '—'}</td>
                         <td>
                           {row.source_url ? (

@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { fetchUnusualMeta, fetchUnusualOptions, scanUnusualOptions } from '../services/api'
-import { currencyForMarket, formatDate, formatMoney, formatNumber } from '../utils/format'
+import { currencyForMarket, formatMoney, formatNumber } from '../utils/format'
+import {
+  aggressivenessLabel,
+  formatIv,
+  formatOptionContract,
+  sentimentLabel,
+  universeLabel,
+} from '../utils/uoaLabels'
 
 function emptyFilters(defaults = {}) {
   return {
@@ -15,6 +22,23 @@ function emptyFilters(defaults = {}) {
     min_premium: '',
     ...defaults,
   }
+}
+
+function quoteBlock(row, currency) {
+  const last = row.last_price != null ? formatMoney(row.last_price, currency) : '—'
+  const bid = row.bid != null ? formatMoney(row.bid, currency) : '—'
+  const ask = row.ask != null ? formatMoney(row.ask, currency) : '—'
+  return (
+    <>
+      <div className="mono">Last {last}</div>
+      <div className="muted mono" style={{ fontSize: '0.78rem' }}>
+        {bid} / {ask}
+      </div>
+      <div className="muted" style={{ fontSize: '0.78rem' }}>
+        IV {formatIv(row.implied_volatility)}
+      </div>
+    </>
+  )
 }
 
 export default function OptionsPage({ market }) {
@@ -31,6 +55,7 @@ export default function OptionsPage({ market }) {
   const [error, setError] = useState('')
   const [scanNote, setScanNote] = useState('')
   const [focusTicker, setFocusTicker] = useState('')
+  const [showLegend, setShowLegend] = useState(false)
 
   const pageCount = useMemo(
     () => Math.max(1, Math.ceil((data.total || 0) / (data.page_size || 50))),
@@ -38,6 +63,8 @@ export default function OptionsPage({ market }) {
   )
 
   const thresholds = meta?.thresholds || {}
+  const directionModel = meta?.direction_model || []
+  const fieldHelp = meta?.field_help || {}
 
   useEffect(() => {
     setError('')
@@ -88,7 +115,6 @@ export default function OptionsPage({ market }) {
     return () => {
       cancelled = true
     }
-    // Re-read URL when market changes or query string changes from alert clicks.
   }, [market, searchParams])
 
   useEffect(() => {
@@ -178,8 +204,8 @@ export default function OptionsPage({ market }) {
 
   const heroCopy =
     market === 'IN'
-      ? 'NSE F&O unusual-activity dashboard. Rows must clear Vol/OI + premium + score gates; alerts only fire for clear bullish/bearish prints.'
-      : 'US unusual-options dashboard. Rows must clear Vol/OI + premium + score gates; in-app alerts only for clear bullish/bearish prints.'
+      ? 'NSE F&O unusual-activity dashboard. Each row is a contract that cleared Vol/OI, premium, and score gates. In-app alerts only fire for clear bullish/bearish prints.'
+      : 'US unusual-options dashboard. Each row is a contract that cleared Vol/OI, premium, and score gates. In-app alerts only fire for clear bullish/bearish prints.'
 
   return (
     <>
@@ -215,6 +241,57 @@ export default function OptionsPage({ market }) {
               <span>notify score</span>
             </div>
           </div>
+        </div>
+
+        <div className="uoa-legend-bar">
+          <button type="button" className="btn btn-ghost" onClick={() => setShowLegend((v) => !v)}>
+            {showLegend ? 'Hide how to read alerts' : 'How to read these alerts'}
+          </button>
+          {showLegend ? (
+            <div className="uoa-legend">
+              <ul>
+                {(directionModel.length
+                  ? directionModel
+                  : [
+                      'Calls lean bullish; puts lean bearish.',
+                      'Last near ask ≈ aggressive buy; near bid ≈ possible sell/hedge (mixed).',
+                      'Score blends Vol/OI, premium, volume, and DTE.',
+                      'Premium is estimated notional, not your P&L.',
+                    ]
+                ).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              {fieldHelp.vol_oi || fieldHelp.premium ? (
+                <dl className="uoa-field-help">
+                  {fieldHelp.vol_oi ? (
+                    <>
+                      <dt>Vol/OI</dt>
+                      <dd>{fieldHelp.vol_oi}</dd>
+                    </>
+                  ) : null}
+                  {fieldHelp.premium ? (
+                    <>
+                      <dt>Premium</dt>
+                      <dd>{fieldHelp.premium}</dd>
+                    </>
+                  ) : null}
+                  {fieldHelp.aggressiveness ? (
+                    <>
+                      <dt>Flow</dt>
+                      <dd>{fieldHelp.aggressiveness}</dd>
+                    </>
+                  ) : null}
+                  {fieldHelp.sentiment ? (
+                    <>
+                      <dt>Sentiment</dt>
+                      <dd>{fieldHelp.sentiment}</dd>
+                    </>
+                  ) : null}
+                </dl>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <form
@@ -253,24 +330,24 @@ export default function OptionsPage({ market }) {
               onChange={(e) => setFilters({ ...filters, sentiment: e.target.value })}
             >
               <option value="">All</option>
-              <option value="bullish">Bullish</option>
-              <option value="bearish">Bearish</option>
-              <option value="mixed">Mixed</option>
+              <option value="bullish">Bullish (likely long calls / short puts bias)</option>
+              <option value="bearish">Bearish (likely long puts / short calls bias)</option>
+              <option value="mixed">Mixed (possible sell/hedge)</option>
               <option value="unclear">Unclear</option>
             </select>
           </div>
           <div className="field">
-            <label htmlFor="uoa-agg">Aggressiveness</label>
+            <label htmlFor="uoa-agg">Flow</label>
             <select
               id="uoa-agg"
               value={filters.aggressiveness}
               onChange={(e) => setFilters({ ...filters, aggressiveness: e.target.value })}
             >
               <option value="">All</option>
-              <option value="buy_ask">Buy ask</option>
-              <option value="sell_bid">Sell bid</option>
-              <option value="mid">Mid</option>
-              <option value="unknown">Unknown</option>
+              <option value="buy_ask">Aggressive buy (near ask)</option>
+              <option value="sell_bid">Aggressive sell (near bid)</option>
+              <option value="mid">Mid-spread</option>
+              <option value="unknown">Bid/ask unavailable</option>
             </select>
           </div>
           <div className="field">
@@ -286,7 +363,9 @@ export default function OptionsPage({ market }) {
             </select>
           </div>
           <div className="field">
-            <label htmlFor="uoa-score">Min score</label>
+            <label htmlFor="uoa-score" title={fieldHelp.score || ''}>
+              Min score
+            </label>
             <input
               id="uoa-score"
               type="number"
@@ -296,7 +375,9 @@ export default function OptionsPage({ market }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="uoa-voloi">Min Vol/OI</label>
+            <label htmlFor="uoa-voloi" title={fieldHelp.vol_oi || ''}>
+              Min Vol/OI
+            </label>
             <input
               id="uoa-voloi"
               type="number"
@@ -307,7 +388,9 @@ export default function OptionsPage({ market }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="uoa-premium">Min premium</label>
+            <label htmlFor="uoa-premium" title={fieldHelp.premium || ''}>
+              Min premium (notional)
+            </label>
             <input
               id="uoa-premium"
               type="number"
@@ -347,7 +430,9 @@ export default function OptionsPage({ market }) {
                   <li key={`card-${row.id}-${row.contract_symbol}`} className="feed-card">
                     <div className="feed-card-top">
                       <div>
-                        <strong className="mono">{row.underlying}</strong>
+                        <strong className="mono">
+                          {formatOptionContract(row, { currency })}
+                        </strong>
                         <span className="muted feed-card-sub mono">{row.contract_symbol}</span>
                       </div>
                       <span className={`side-pill ${row.option_type === 'call' ? 'buy' : 'sell'}`}>
@@ -360,49 +445,49 @@ export default function OptionsPage({ market }) {
                         <strong className="mono">{formatNumber(row.score)}</strong>
                       </div>
                       <div>
-                        <span className="muted">Premium</span>
+                        <span className="muted">Notional premium</span>
                         <strong className="mono">{formatMoney(row.premium, currency)}</strong>
                       </div>
                       <div>
                         <span className="muted">Vol/OI</span>
-                        <strong className="mono">{formatNumber(row.vol_oi)}</strong>
+                        <strong className="mono">{formatNumber(row.vol_oi)}×</strong>
                       </div>
                       <div>
-                        <span className="muted">Exp</span>
+                        <span className="muted">Volume / OI</span>
                         <strong className="mono">
-                          {formatDate(row.expiration)} · {row.dte}d
+                          {formatNumber(row.volume)} / {formatNumber(row.open_interest)}
                         </strong>
                       </div>
                     </div>
+                    <div className="feed-card-quote">{quoteBlock(row, currency)}</div>
                     <div className="feed-card-body">
                       <span
                         className={`side-pill ${
                           row.sentiment === 'bullish' ? 'buy' : row.sentiment === 'bearish' ? 'sell' : ''
                         }`}
                       >
-                        {row.sentiment || '—'}
+                        {sentimentLabel(row.sentiment)}
                       </span>
                       <span className="muted">
-                        {formatNumber(row.volume)} / {formatNumber(row.open_interest)} ·{' '}
-                        {row.aggressiveness || 'unknown'}
+                        {aggressivenessLabel(row.aggressiveness)}
                         {row.reason ? ` · ${row.reason}` : ''}
                       </span>
                     </div>
                   </li>
                 ))}
               </ul>
-              <table className="desktop-table">
+              <table className="desktop-table uoa-table">
                 <thead>
                   <tr>
-                    <th>Underlying</th>
+                    <th>Contract</th>
                     <th>Type</th>
-                    <th>Strike / Exp</th>
-                    <th>Volume / OI</th>
-                    <th>Vol/OI</th>
-                    <th>Premium</th>
-                    <th>Score</th>
-                    <th>Sentiment</th>
-                    <th>Aggressiveness</th>
+                    <th title={fieldHelp.vol_oi || ''}>Volume / OI</th>
+                    <th title={fieldHelp.vol_oi || ''}>Vol/OI</th>
+                    <th title={fieldHelp.premium || ''}>Notional premium</th>
+                    <th>Quote / IV</th>
+                    <th title={fieldHelp.score || ''}>Score</th>
+                    <th title={fieldHelp.sentiment || ''}>Sentiment</th>
+                    <th title={fieldHelp.aggressiveness || ''}>Flow</th>
                     <th>Universe</th>
                   </tr>
                 </thead>
@@ -415,7 +500,7 @@ export default function OptionsPage({ market }) {
                       }
                     >
                       <td>
-                        <strong>{row.underlying}</strong>
+                        <strong>{formatOptionContract(row, { currency })}</strong>
                         <div className="muted mono" style={{ fontSize: '0.78rem' }}>
                           {row.contract_symbol}
                         </div>
@@ -426,18 +511,13 @@ export default function OptionsPage({ market }) {
                         </span>
                       </td>
                       <td className="mono">
-                        {formatNumber(row.strike)}
-                        <div className="muted">
-                          {formatDate(row.expiration)} · {row.dte}d
-                        </div>
-                      </td>
-                      <td className="mono">
                         {formatNumber(row.volume)} / {formatNumber(row.open_interest)}
                       </td>
                       <td className="mono">
-                        <strong>{formatNumber(row.vol_oi)}</strong>
+                        <strong>{formatNumber(row.vol_oi)}×</strong>
                       </td>
                       <td className="mono">{formatMoney(row.premium, currency)}</td>
+                      <td>{quoteBlock(row, currency)}</td>
                       <td className="mono">
                         <strong>{formatNumber(row.score)}</strong>
                       </td>
@@ -447,18 +527,18 @@ export default function OptionsPage({ market }) {
                             row.sentiment === 'bullish' ? 'buy' : row.sentiment === 'bearish' ? 'sell' : ''
                           }`}
                         >
-                          {row.sentiment || '—'}
+                          {sentimentLabel(row.sentiment)}
                         </span>
                       </td>
                       <td>
-                        <div className="mono">{row.aggressiveness || '—'}</div>
+                        <div>{aggressivenessLabel(row.aggressiveness)}</div>
                         {row.reason ? (
                           <div className="muted" style={{ fontSize: '0.78rem', marginTop: '0.25rem' }}>
                             {row.reason}
                           </div>
                         ) : null}
                       </td>
-                      <td>{row.universe || '—'}</td>
+                      <td>{universeLabel(row.universe)}</td>
                     </tr>
                   ))}
                 </tbody>

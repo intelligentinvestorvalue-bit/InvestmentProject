@@ -220,8 +220,8 @@ export default function WatchlistPage({ market }) {
                             <div className="feed-card-top">
                               <div>
                                 <Link
-                                  className="mono"
-                                  to="/research"
+                                  className="mono ticker-link"
+                                  to={`/research?ticker=${encodeURIComponent(item.ticker)}`}
                                   onClick={() => sessionStorage.setItem('fd_ticker', item.ticker)}
                                 >
                                   <strong>{item.ticker}</strong>
@@ -269,7 +269,8 @@ export default function WatchlistPage({ market }) {
                             <tr key={item.id}>
                               <td className="mono">
                                 <Link
-                                  to="/research"
+                                  className="ticker-link"
+                                  to={`/research?ticker=${encodeURIComponent(item.ticker)}`}
                                   onClick={() => sessionStorage.setItem('fd_ticker', item.ticker)}
                                 >
                                   {item.ticker}

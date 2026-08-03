@@ -57,6 +57,11 @@ export function fetchFinancials(ticker, market, params = {}) {
   return request(`/api/v1/financials/${encodeURIComponent(ticker)}?${qs.toString()}`)
 }
 
+export function fetchMarketOverview(ticker, market, params = {}) {
+  const qs = new URLSearchParams({ market, ...params })
+  return request(`/api/v1/financials/${encodeURIComponent(ticker)}/market?${qs.toString()}`)
+}
+
 export function fetchSectors(market) {
   return request(`/api/v1/explore/sectors?market=${encodeURIComponent(market)}`)
 }
