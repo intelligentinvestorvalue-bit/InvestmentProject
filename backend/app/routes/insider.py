@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Optional
 
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func, or_
@@ -296,6 +297,7 @@ def insider_meta():
             "sync_max_filings_default": current_app.config["SYNC_MAX_FILINGS"],
             "backfill_days_default": current_app.config.get("US_BACKFILL_DAYS", 30),
             "backfill_max_filings_default": current_app.config.get("US_BACKFILL_MAX_FILINGS", 300),
+            "catchup_days": current_app.config.get("INSIDER_CATCHUP_DAYS", 7),
             "currency_hint": "USD" if market == "US" else "INR",
         }
     )
@@ -328,7 +330,6 @@ def sync_insider():
             )
             days = max(1, min(days, 30))
             max_filings = max(1, min(max_filings, max_cap))
-            from datetime import datetime, timezone
 
             sync_started = datetime.now(timezone.utc)
             result = sync_us_insider_feed(
@@ -354,6 +355,106 @@ def sync_insider():
             result = sync_india_insider_feed(days=days, trigger="manual", include_extra=include_extra)
             return jsonify(result)
         return jsonify({"error": f"Unsupported market: {market}"}), 400
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": str(exc)}), 502
+
+
+def _latest_sync(market: str, *, status: Optional[str] = None) -> Optional[SyncRun]:
+    query = SyncRun.query.filter_by(market=market)
+    if status:
+        query = query.filter_by(status=status)
+    return query.order_by(SyncRun.started_at.desc()).first()
+
+
+def _aware(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def run_insider_catchup(market: str) -> dict[str, Any]:
+    """Pull last N days of insider data if the local cache is stale.
+
+    Used on dashboard load so a few days offline still catch up without a
+    manual sync. Skips if a sync is already running or a successful sync
+    finished recently.
+    """
+    market = market.upper()
+    days = max(1, min(int(current_app.config.get("INSIDER_CATCHUP_DAYS", 7)), 30))
+    fresh_hours = max(1, int(current_app.config.get("INSIDER_CATCHUP_FRESH_HOURS", 6)))
+    stale_running_minutes = 30
+    now = datetime.now(timezone.utc)
+
+    running = _latest_sync(market, status="running")
+    if running:
+        started = _aware(running.started_at)
+        if started and (now - started) < timedelta(minutes=stale_running_minutes):
+            return {
+                "skipped": True,
+                "reason": "in_progress",
+                "market": market,
+                "days": days,
+                "latest_sync": running.to_dict(),
+            }
+
+    latest_ok = _latest_sync(market, status="completed")
+    finished = _aware(latest_ok.finished_at or latest_ok.started_at) if latest_ok else None
+    if finished and (now - finished) < timedelta(hours=fresh_hours):
+        return {
+            "skipped": True,
+            "reason": "fresh",
+            "market": market,
+            "days": days,
+            "fresh_hours": fresh_hours,
+            "latest_sync": latest_ok.to_dict() if latest_ok else None,
+        }
+
+    if market == "US":
+        max_filings = int(
+            current_app.config.get(
+                "US_CATCHUP_MAX_FILINGS",
+                current_app.config.get("US_BACKFILL_MAX_FILINGS", 250),
+            )
+        )
+        max_filings = max(25, min(max_filings, 500))
+        sync_started = datetime.now(timezone.utc)
+        # EFTS date window — Atom "recent" only covers the current feed and
+        # would miss days the backend was offline.
+        result = sync_us_insider_feed(
+            days=days,
+            max_filings=max_filings,
+            trigger="onload",
+            mode="backfill",
+        )
+        if current_app.config.get("DEEP_DIVE_BRIDGE_ENABLED", True):
+            try:
+                from app.services.deep_dive_bridge import run_post_sync_bridge
+
+                result["deep_dive"] = run_post_sync_bridge(sync_started_at=sync_started)
+            except Exception as bridge_exc:  # noqa: BLE001
+                result["deep_dive_error"] = str(bridge_exc)
+        result["skipped"] = False
+        result["reason"] = "caught_up"
+        result["days"] = days
+        return result
+
+    result = sync_india_insider_feed(days=days, trigger="onload", include_extra=True)
+    result["skipped"] = False
+    result["reason"] = "caught_up"
+    result["days"] = days
+    return result
+
+
+@insider_bp.post("/insider/sync/catchup")
+def catchup_insider():
+    """Page-load catch-up: last 7 days for US and India if cache is stale."""
+    market, err = _market_or_400()
+    if err:
+        return err
+    try:
+        return jsonify(run_insider_catchup(market))
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": str(exc)}), 502
 

@@ -39,6 +39,10 @@ class Config:
     US_BACKFILL_DAYS = int(os.getenv("US_BACKFILL_DAYS", "30"))
     US_BACKFILL_MAX_FILINGS = int(os.getenv("US_BACKFILL_MAX_FILINGS", "300"))
     IN_SYNC_DAYS = int(os.getenv("IN_SYNC_DAYS", "120"))
+    # Page-load catch-up when the app/backend was off for several days
+    INSIDER_CATCHUP_DAYS = int(os.getenv("INSIDER_CATCHUP_DAYS", "7"))
+    INSIDER_CATCHUP_FRESH_HOURS = int(os.getenv("INSIDER_CATCHUP_FRESH_HOURS", "6"))
+    US_CATCHUP_MAX_FILINGS = int(os.getenv("US_CATCHUP_MAX_FILINGS", "250"))
 
     # Unusual options activity — US (Yahoo / yfinance)
     UOA_ENABLED = _as_bool(os.getenv("UOA_ENABLED"), True)

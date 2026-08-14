@@ -42,6 +42,13 @@ export function syncInsider(market, payload = {}) {
   })
 }
 
+export function catchupInsider(market) {
+  return request(`/api/v1/insider/sync/catchup?market=${encodeURIComponent(market)}`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  })
+}
+
 export function fetchDisclosures(params) {
   const qs = new URLSearchParams()
   Object.entries(params).forEach(([key, value]) => {

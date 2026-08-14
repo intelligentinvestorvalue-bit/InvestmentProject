@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  catchupInsider,
   fetchDisclosures,
   fetchHealth,
   fetchInsiderMeta,
@@ -69,6 +70,19 @@ function researchTickerPath(ticker) {
   return `/research?ticker=${encodeURIComponent(ticker)}`
 }
 
+const catchupInFlight = {}
+
+function catchupInsiderOnce(market) {
+  if (!catchupInFlight[market]) {
+    catchupInFlight[market] = catchupInsider(market).finally(() => {
+      window.setTimeout(() => {
+        delete catchupInFlight[market]
+      }, 4000)
+    })
+  }
+  return catchupInFlight[market]
+}
+
 function TickerLink({ ticker }) {
   if (!ticker || ticker === '—' || ticker === 'NONE' || ticker === 'N/A' || ticker === '[NONE]') {
     return <span className="mono">{ticker || '—'}</span>
@@ -96,6 +110,7 @@ export default function InsiderPage({ market }) {
   const [loading, setLoading] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [backfilling, setBackfilling] = useState(false)
+  const [catchingUp, setCatchingUp] = useState(false)
   const [error, setError] = useState('')
   const [syncNote, setSyncNote] = useState('')
 
@@ -103,7 +118,7 @@ export default function InsiderPage({ market }) {
     () => Math.max(1, Math.ceil((data.total || 0) / (data.page_size || 50))),
     [data.total, data.page_size],
   )
-  const busy = syncing || backfilling
+  const busy = syncing || backfilling || catchingUp
 
   useEffect(() => {
     const next = defaultFilters(market)
@@ -132,7 +147,7 @@ export default function InsiderPage({ market }) {
     return () => {
       cancelled = true
     }
-  }, [market, syncing, backfilling])
+  }, [market, syncing, backfilling, catchingUp])
 
   useEffect(() => {
     let cancelled = false
@@ -172,6 +187,47 @@ export default function InsiderPage({ market }) {
       cancelled = true
     }
   }, [market, applied, page, view])
+
+  useEffect(() => {
+    let cancelled = false
+    async function catchUp() {
+      setCatchingUp(true)
+      setSyncNote('Checking last 7 days of insider filings…')
+      try {
+        const result = await catchupInsiderOnce(market)
+        if (cancelled) return
+        if (result.skipped) {
+          if (result.reason === 'in_progress') {
+            setSyncNote('A sync is already running — dashboard will refresh when it finishes.')
+          } else {
+            setSyncNote('')
+          }
+          return
+        }
+        const days = result.days || 7
+        const rows = result.transactions_upserted || 0
+        const seen = result.filings_seen || 0
+        setSyncNote(
+          market === 'US'
+            ? `Caught up last ${days} days: ${rows} new open-market rows from ${seen} filings.`
+            : `Caught up last ${days} days: ${rows} new India open-market rows.`,
+        )
+        setPage(1)
+        setApplied((prev) => ({ ...prev }))
+      } catch (err) {
+        if (!cancelled) {
+          setSyncNote('')
+          setError(err.message || 'Catch-up sync failed')
+        }
+      } finally {
+        if (!cancelled) setCatchingUp(false)
+      }
+    }
+    catchUp()
+    return () => {
+      cancelled = true
+    }
+  }, [market])
 
   function updateFilter(key, value) {
     setFilters((prev) => ({ ...prev, [key]: value }))
@@ -252,9 +308,8 @@ export default function InsiderPage({ market }) {
         <h1>{market === 'US' ? 'US open-market insider feed' : 'India insider & disclosures'}</h1>
         <p>
           {market === 'US'
-            ? 'Track Form 4 open-market buys (P) and sells (S) across US filers. Backfill once to seed ~30 days locally, then filter the DB; scheduled sync keeps it current.'
-            : 'Open-market PIT plus separate pledge and SAST Reg.29 views (NSE/BSE reported).'}{' '}
-          Scheduled sync keeps feeds fresh in the background.
+            ? 'Track Form 4 open-market buys (P) and sells (S) across US filers. Opening this page pulls the last 7 days if you have been away; use Backfill to seed ~30 days once.'
+            : 'Open-market PIT plus separate pledge and SAST Reg.29 views (NSE/BSE reported). Opening this page pulls the last 7 days if the local cache is stale.'}
         </p>
       </div>
 
@@ -288,7 +343,7 @@ export default function InsiderPage({ market }) {
             </div>
             <div className="actions">
               <button className="btn btn-primary" type="button" onClick={handleSync} disabled={busy}>
-                {syncing ? 'Syncing…' : syncLabel}
+                {catchingUp ? 'Catching up last 7 days…' : syncing ? 'Syncing…' : syncLabel}
               </button>
               {market === 'US' ? (
                 <button className="btn btn-ghost" type="button" onClick={handleBackfill} disabled={busy}>
@@ -635,14 +690,21 @@ export default function InsiderPage({ market }) {
             )
           ) : (
             <div className="empty muted">
-              No rows yet. Click <strong>{syncLabel}</strong>
-              {market === 'US' ? (
-                <>
-                  {' '}
-                  or <strong>Backfill last 30 days</strong>
-                </>
-              ) : null}{' '}
-              to load data.
+              {catchingUp
+                ? 'Catching up the last 7 days of filings…'
+                : (
+                  <>
+                    No rows yet. Opening this page auto-syncs the last 7 days. You can also click{' '}
+                    <strong>{syncLabel}</strong>
+                    {market === 'US' ? (
+                      <>
+                        {' '}
+                        or <strong>Backfill last 30 days</strong>
+                      </>
+                    ) : null}
+                    .
+                  </>
+                )}
             </div>
           )}
         </div>
