@@ -45,3 +45,16 @@ def test_role_flags_promoter_and_independent_director():
     director = _role_flags("Independent Director")
     assert director["is_director"] is True
     assert director["relationship"] == "Independent Director"
+    assert director["is_officer"] is False
+
+
+def test_role_flags_chairman_and_president_are_officers():
+    chair = _role_flags("Chairman")
+    assert chair["is_officer"] is True
+    assert chair["officer_title"] == "Chairman"
+
+    president = _role_flags("President")
+    assert president["is_officer"] is True
+
+    non_exec = _role_flags("Non-Executive Director")
+    assert non_exec["is_officer"] is False

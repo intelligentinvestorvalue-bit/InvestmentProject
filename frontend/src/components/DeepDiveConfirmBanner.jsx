@@ -83,8 +83,8 @@ export default function DeepDiveConfirmBanner() {
           <div key={item.id} className="deep-dive-banner-item">
             <div className="deep-dive-banner-copy">
               <strong>
-                Push {item.ticker} to Equity Research deep dive
-                {left > 0 ? ` in ${left}s` : ' now'}
+                Push {item.ticker} to Equity Research queue
+                {left > 0 ? ` in ${left}s` : ''}
               </strong>
               <span>
                 {(item.officer_title || 'Officer') +
@@ -93,7 +93,7 @@ export default function DeepDiveConfirmBanner() {
                 {item.company_name ? ` · ${item.company_name}` : ''}
               </span>
               <span className="muted">
-                Cancel to defer ~1 hour (ntfy action works without opening a browser). No action = auto-queue deep dive.
+                Parked on the Equity Research queue. Research does not start until you click Start overnight there.
               </span>
             </div>
             <div className="deep-dive-banner-actions">

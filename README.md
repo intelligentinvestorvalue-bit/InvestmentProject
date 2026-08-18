@@ -12,7 +12,7 @@ Personal research desk for **US and India** markets.
 | Sector explore | SIC-based sectors from SEC submissions | Yahoo sector/industry metadata |
 | Watchlists | Saved ticker screens | Saved ticker screens |
 | Unusual options (UOA) | Yahoo delayed chains: watchlist + liquid universe, call/put + bid/ask direction, in-app alerts | NSE F&O option-chain-v3: indices + equity FO, same direction model, in-app alerts |
-| Officer buy → deep dive | Auto-detect ≥$100k CEO/CFO/management buys → confirm banner → Equity Research Agent full pack | — |
+| Officer buy → deep dive | Auto-detect ≥$100k CEO/CFO/management buys → park on Equity Research queue (start on demand) | — |
 | Scheduled sync | Auto Form 4 refresh + UOA poll/EOD + deep-dive confirm tick | Auto PIT + pledge/SAST refresh + India UOA poll/EOD |
 
 Legacy notes from earlier experiments live in `docs/legacy/`.
@@ -66,10 +66,8 @@ Fully background when keep-alive keeps both apps running (no browser required):
 
 1. Hourly US Form 4 sync finds open-market **officer / C-suite buys ≥ $100k**.
 2. Skips tickers already in the Equity overnight queue, actively researching, or with existing reports/docs.
-3. FilingDesk optional confirm banner/ntfy, then pushes to Equity **research queue**.
-4. Equity queue mode (`DEEP_DIVE_QUEUE_START_POLICY`):
-   - **`prompt_now`** (default): laptop ntfy — auto-start deep dive in ~1 min; Cancel → stay deferred for overnight/manual Start overnight
-   - **`overnight`**: park only until you hit **Start overnight** (or API)
+3. FilingDesk immediately parks the ticker on the Equity **research queue**.
+4. Research does **not** auto-start. Open the Equity queue and click **Start overnight** when you want to run it.
 5. Equity queue page/API: add tickers, remove ticker, start overnight, pause/resume.
 
 Config: `DEEP_DIVE_*` in `backend/.env.example`. Set `NTFY_TOPIC` on both apps for laptop alerts.

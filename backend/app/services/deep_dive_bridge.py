@@ -4,10 +4,9 @@ Flow
 ----
 1. After US insider sync, scan new open-market officer buys >= DEEP_DIVE_MIN_VALUE_USD.
 2. Skip tickers already queued / running / researched on the Equity agent.
-3. Stage a DeepDiveCandidate in ``pending_confirm`` and notify (ntfy actions + optional UI).
-4. Wait DEEP_DIVE_CONFIRM_SECONDS (default 60). Cancel via ntfy action or UI → ``backlog``.
-5. On expiry / Push now → ``POST /api/queue`` (overnight sequential pack by default).
-6. By default never re-queue a ticker after a successful push (DEEP_DIVE_ONCE_PER_TICKER).
+3. Immediately ``POST /api/queue`` with overnight policy (parked, not started).
+4. Research runs only when you click Start overnight on the Equity queue.
+5. By default never re-queue a ticker after a successful push (DEEP_DIVE_ONCE_PER_TICKER).
    Later qualifying buys for that ticker are stored as ``followup`` rows for the Follow-ups view
    (optional timed cooldown only when once-per-ticker is off).
 """
@@ -27,7 +26,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models import AppNotification, DeepDiveCandidate, InsiderTransaction, utcnow
-from app.services.ntfy import build_http_actions, send_ntfy
+from app.services.ntfy import send_ntfy
+from app.utils.helpers import is_management_insider, is_management_title
 
 logger = logging.getLogger(__name__)
 
@@ -108,18 +108,25 @@ def _officer_keywords() -> list[str]:
 
 def is_management_officer(tx: InsiderTransaction) -> bool:
     """True when the filer is an officer / C-suite / named management role."""
-    if tx.is_officer:
+    if is_management_insider(
+        is_officer=bool(tx.is_officer),
+        officer_title=tx.officer_title,
+        relationship=tx.relationship,
+    ):
         return True
-    title = (tx.officer_title or tx.relationship or "").strip().lower()
+    title = (tx.officer_title or tx.relationship or "").strip()
     if not title:
         return False
+    # Extra keywords from DEEP_DIVE_OFFICER_TITLE_KEYWORDS beyond the shared list.
     for keyword in _officer_keywords():
+        if is_management_title(keyword):
+            continue
+        lowered = title.lower()
         if " " in keyword:
-            if keyword in title:
+            if keyword in lowered:
                 return True
             continue
-        # Short tokens (ceo/cfo/cto) need word boundaries — "director" contains "cto".
-        if re.search(rf"(?<![a-z]){re.escape(keyword)}(?![a-z])", title):
+        if re.search(rf"(?<![a-z]){re.escape(keyword)}(?![a-z])", lowered):
             return True
     return False
 
@@ -312,7 +319,7 @@ def _create_in_app_notification(candidate: DeepDiveCandidate, *, seconds: int) -
     body = (
         f"{candidate.officer_title or 'Officer'} {candidate.insider_name or ''} "
         f"bought {_format_usd(candidate.total_value)} of {candidate.company_name or candidate.ticker}. "
-        f"Pushing to Equity Research Agent overnight queue in ~{seconds}s unless cancelled (ntfy or banner)."
+        f"Parked on the Equity Research queue — start it there when you want; nothing auto-runs."
     )
     note = AppNotification(
         kind="deep_dive_push",
@@ -342,27 +349,17 @@ def _notify_external(candidate: DeepDiveCandidate, *, seconds: int) -> None:
     if not current_app.config.get("DEEP_DIVE_NTFY_ENABLED", True):
         return
     base = resolve_action_base_url()
-    cancel_url = f"{base}/api/v1/deep-dive/{candidate.id}/cancel"
-    confirm_url = f"{base}/api/v1/deep-dive/{candidate.id}/confirm"
-    actions = build_http_actions(
-        [
-            ("Cancel (retry later)", cancel_url),
-            ("Push now", confirm_url),
-        ]
-    )
     send_ntfy(
         title=f"FilingDesk → deep dive {candidate.ticker}",
         message=(
             f"{candidate.officer_title or 'Officer'} bought "
             f"{_format_usd(candidate.total_value)}. "
-            f"Auto-queues Equity Research deep dive in ~{seconds}s. "
-            f"Tap Cancel to defer ~1h, or Push now — no browser needed "
-            f"(ntfy action / laptop keep-alive)."
+            f"Parked on Equity Research queue (not started). "
+            f"Open the queue and click Start overnight when you want to run it."
         ),
         priority=4,
-        tags="chart_with_upwards_trend,warning",
+        tags="inbox_tray,chart_with_upwards_trend",
         click=base,
-        actions=actions,
     )
 
 
@@ -473,12 +470,11 @@ def stage_candidate_from_tx(
         logger.exception("External ntfy failed for %s", ticker)
 
     logger.info(
-        "Staged deep-dive candidate %s id=%s deadline=%s",
+        "Staged deep-dive candidate %s id=%s — pushing to parked Equity queue",
         ticker,
         candidate.id,
-        deadline.isoformat(),
     )
-    return candidate
+    return push_candidate(candidate)
 
 
 def scan_and_stage(*, since: Optional[datetime] = None, market: str = "US") -> dict[str, Any]:
@@ -564,12 +560,11 @@ def revive_backlog(*, now: Optional[datetime] = None) -> dict[str, Any]:
         try:
             note_id = _create_in_app_notification(candidate, seconds=seconds)
             candidate.notification_id = note_id
-        except Exception:  # noqa: BLE001
-            logger.exception("Notify failed on backlog revive %s", candidate.ticker)
-        try:
+            db.session.flush()
             _notify_external(candidate, seconds=seconds)
         except Exception:  # noqa: BLE001
-            logger.exception("ntfy failed on backlog revive %s", candidate.ticker)
+            logger.exception("Notify failed on backlog revive %s", candidate.ticker)
+        push_candidate(candidate)
         revived += 1
     db.session.commit()
     return {"revived": revived}
@@ -585,12 +580,11 @@ def research_agent_healthy() -> bool:
 
 
 def push_candidate(candidate: DeepDiveCandidate) -> DeepDiveCandidate:
-    """Enqueue ticker on Equity Research Agent (overnight queue by default)."""
+    """Enqueue ticker on Equity Research Agent overnight queue (parked, not started)."""
     base = str(current_app.config.get("DEEP_DIVE_RESEARCH_URL", "http://127.0.0.1:8000")).rstrip("/")
     template = current_app.config.get("DEEP_DIVE_RESEARCH_TEMPLATE", "all")
     mode = current_app.config.get("DEEP_DIVE_RESEARCH_MODE", "deep")
     pin = (current_app.config.get("DEEP_DIVE_RESEARCH_PIN") or "").strip() or None
-    use_queue = bool(current_app.config.get("DEEP_DIVE_USE_OVERNIGHT_QUEUE", True))
 
     skip, reason = should_skip_ticker(candidate.ticker)
     if skip:
@@ -620,88 +614,44 @@ def push_candidate(candidate: DeepDiveCandidate) -> DeepDiveCandidate:
         return candidate
 
     try:
-        if use_queue:
-            policy = (
-                current_app.config.get("DEEP_DIVE_QUEUE_START_POLICY") or "prompt_now"
-            ).strip().lower()
-            if policy not in {"prompt_now", "overnight"}:
-                policy = "prompt_now"
-            confirm_seconds = int(current_app.config.get("DEEP_DIVE_CONFIRM_SECONDS", 60))
-            payload: dict[str, Any] = {
-                "tickers": candidate.ticker,
-                "mode": mode,
-                "template": template,
-                "goal": goal,
-                "from_scratch": False,
-                "start_policy": policy,
-                "confirm_seconds": confirm_seconds if policy == "prompt_now" else 0,
-            }
-            if pin:
-                payload["pin"] = pin
-            resp = requests.post(f"{base}/api/queue", json=payload, timeout=30)
-            if resp.status_code >= 400:
-                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
-            data = resp.json()
-            skipped = data.get("skipped") or []
-            if data.get("added", 0) == 0 and skipped:
-                candidate.status = STATUS_SKIPPED
-                candidate.error_message = skipped[0].get("reason") or "Skipped by research queue dedupe"
-                candidate.updated_at = utcnow()
-                db.session.commit()
-                return candidate
-            created_items = data.get("created") or []
-            queue_id = ""
-            if created_items and isinstance(created_items[0], dict):
-                queue_id = str(created_items[0].get("id") or "")
-            if not queue_id:
-                tickers = data.get("tickers") or [candidate.ticker]
-                queue_id = f"queue:{tickers[0]}"
-            candidate.status = STATUS_PUSHED
-            candidate.research_job_id = queue_id
-            candidate.pushed_at = utcnow()
+        payload: dict[str, Any] = {
+            "tickers": candidate.ticker,
+            "mode": mode,
+            "template": template,
+            "goal": goal,
+            "from_scratch": False,
+            "start_policy": "overnight",
+            "confirm_seconds": 0,
+        }
+        if pin:
+            payload["pin"] = pin
+        resp = requests.post(f"{base}/api/queue", json=payload, timeout=30)
+        if resp.status_code >= 400:
+            raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
+        data = resp.json()
+        skipped = data.get("skipped") or []
+        if data.get("added", 0) == 0 and skipped:
+            candidate.status = STATUS_SKIPPED
+            candidate.error_message = skipped[0].get("reason") or "Skipped by research queue dedupe"
             candidate.updated_at = utcnow()
-            candidate.error_message = None
             db.session.commit()
-            dest = f"queue ({policy}, {template})"
-            job_ref = candidate.research_job_id
-        else:
-            payload = {
-                "ticker": candidate.ticker,
-                "mode": mode,
-                "template": template,
-                "collaborative": False,
-                "goal": goal,
-            }
-            if pin:
-                payload["pin"] = pin
-            resp = requests.post(f"{base}/api/research", json=payload, timeout=30)
-            if resp.status_code == 409:
-                candidate.status = STATUS_SKIPPED
-                detail = resp.json().get("detail") if resp.headers.get("content-type", "").startswith("application/json") else None
-                if isinstance(detail, dict):
-                    candidate.error_message = detail.get("message") or "Already researched"
-                else:
-                    candidate.error_message = str(detail or "Already researched")[:1000]
-                candidate.updated_at = utcnow()
-                db.session.commit()
-                return candidate
-            if resp.status_code >= 400:
-                raise RuntimeError(f"HTTP {resp.status_code}: {resp.text[:300]}")
-            data = resp.json()
-            if data.get("reused") and data.get("in_overnight_queue"):
-                candidate.status = STATUS_SKIPPED
-                candidate.error_message = data.get("message") or "Already in overnight queue"
-                candidate.updated_at = utcnow()
-                db.session.commit()
-                return candidate
-            candidate.status = STATUS_PUSHED
-            candidate.research_job_id = str(data.get("job_id") or "")
-            candidate.pushed_at = utcnow()
-            candidate.updated_at = utcnow()
-            candidate.error_message = None
-            db.session.commit()
-            dest = f"job {candidate.research_job_id}"
-            job_ref = candidate.research_job_id
+            return candidate
+        created_items = data.get("created") or []
+        queue_id = ""
+        if created_items and isinstance(created_items[0], dict):
+            queue_id = str(created_items[0].get("id") or "")
+        if not queue_id:
+            tickers = data.get("tickers") or [candidate.ticker]
+            queue_id = f"queue:{tickers[0]}"
+        candidate.status = STATUS_PUSHED
+        candidate.research_job_id = queue_id
+        candidate.pushed_at = utcnow()
+        candidate.updated_at = utcnow()
+        candidate.error_message = None
+        db.session.commit()
+        dest = "queue (parked until Start overnight)"
+        job_ref = candidate.research_job_id
+        use_queue = True
 
         note = AppNotification(
             kind="deep_dive_pushed",

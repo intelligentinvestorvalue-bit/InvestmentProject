@@ -12,7 +12,7 @@ from app.extensions import db
 from app.models import InsiderTransaction, SyncRun
 from app.services.india_provider import list_india_disclosures, sync_india_insider_feed
 from app.services.sec_form4 import sync_us_insider_feed
-from app.utils.helpers import parse_date
+from app.utils.helpers import management_role_filter, parse_date
 
 insider_bp = Blueprint("insider", __name__)
 
@@ -98,7 +98,7 @@ def list_insider_transactions():
     if role == "director":
         query = query.filter(InsiderTransaction.is_director.is_(True))
     elif role == "officer":
-        query = query.filter(InsiderTransaction.is_officer.is_(True))
+        query = query.filter(management_role_filter(InsiderTransaction))
     elif role in {"ten_percent", "10_percent", "owner"}:
         query = query.filter(InsiderTransaction.is_ten_percent_owner.is_(True))
     elif role == "other":
@@ -106,6 +106,7 @@ def list_insider_transactions():
             InsiderTransaction.is_director.is_(False),
             InsiderTransaction.is_officer.is_(False),
             InsiderTransaction.is_ten_percent_owner.is_(False),
+            ~management_role_filter(InsiderTransaction),
         )
 
     ownership_form = (request.args.get("ownership_form") or "").strip().upper()

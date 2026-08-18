@@ -402,7 +402,9 @@ export default function InsiderPage({ market }) {
                 <select id="role" value={filters.role} onChange={(e) => updateFilter('role', e.target.value)}>
                   <option value="">All</option>
                   <option value="director">Director</option>
-                  <option value="officer">Officer / KMP</option>
+                  <option value="officer">
+                    {market === 'IN' ? 'Officer / KMP' : 'Officer / management'}
+                  </option>
                   <option value="ten_percent">{market === 'IN' ? 'Promoter' : '10% owner'}</option>
                   <option value="other">Other</option>
                 </select>

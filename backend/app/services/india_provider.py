@@ -14,7 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
 from app.models import AnnualFinancial, Company, IndiaDisclosure, InsiderTransaction, SyncRun
-from app.utils.helpers import clean_whitespace, to_float
+from app.utils.helpers import clean_whitespace, is_management_title, to_float
 
 logger = logging.getLogger(__name__)
 
@@ -165,18 +165,12 @@ def _role_flags(person_category: Optional[str]) -> dict[str, Any]:
     is_director = "director" in lower and "independent" not in lower or lower == "director"
     if "independent director" in lower:
         is_director = True
-    is_officer = any(
+    is_officer = is_management_title(cat) or any(
         token in lower
         for token in (
             "key managerial",
-            "kmp",
             "employee",
             "designated",
-            "officer",
-            "ceo",
-            "cfo",
-            "cto",
-            "managing director",
             "whole time",
         )
     )

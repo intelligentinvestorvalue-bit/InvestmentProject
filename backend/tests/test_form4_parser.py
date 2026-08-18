@@ -1,7 +1,7 @@
 """Unit tests for Form 4 parsing (no network)."""
 
 from app.services.sec_form4 import parse_form4_xml
-from tests.fixtures import SAMPLE_FORM4_XML
+from tests.fixtures import SAMPLE_FORM4_CHAIRMAN_XML, SAMPLE_FORM4_XML
 
 
 def test_parse_form4_keeps_only_open_market_ps():
@@ -24,3 +24,19 @@ def test_parse_form4_keeps_only_open_market_ps():
     assert buy["shares"] == 1000
     assert buy["price_per_share"] == 190.5
     assert buy["total_value"] == 190500.0
+
+
+def test_parse_form4_chairman_from_other_text():
+    rows = parse_form4_xml(
+        SAMPLE_FORM4_CHAIRMAN_XML,
+        accession_number="0000320193-26-000999",
+        filing_date=None,
+        source_url="https://example.test/form4-chair.xml",
+    )
+    assert len(rows) == 1
+    chair = rows[0]
+    assert chair["insider_name"] == "Sugar Ronald D"
+    assert chair["is_officer"] is False
+    assert chair["is_director"] is True
+    assert chair["officer_title"] == "Chairman"
+    assert "Chairman" in chair["relationship"]

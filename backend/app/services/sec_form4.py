@@ -129,6 +129,13 @@ def parse_form4_xml(
         is_officer = _truthy(_find_text(relationship, "isOfficer"))
         is_ten = _truthy(_find_text(relationship, "isTenPercentOwner"))
         officer_title = clean_whitespace(_find_text(relationship, "officerTitle"))
+        other_text = clean_whitespace(_find_text(relationship, "otherText"))
+        # Chairman / Trustee / etc. are often isOther + otherText, not isOfficer.
+        if other_text:
+            if not officer_title:
+                officer_title = other_text
+            elif other_text.lower() not in officer_title.lower():
+                officer_title = f"{officer_title}; {other_text}"
         reporting_owners.append(
             {
                 "insider_name": name,
